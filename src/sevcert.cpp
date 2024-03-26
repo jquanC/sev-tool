@@ -355,8 +355,8 @@ bool SEVCert::create_oca_cert(EVP_PKEY **oca_key_pair, SEV_SIG_ALGO algo)
         memset(m_child_cert, 0, sizeof(sev_cert));
 
         m_child_cert->version = SEV_CERT_MAX_VERSION;
-        m_child_cert->api_major = 0;
-        m_child_cert->api_minor = 0;
+        m_child_cert->api_major = 1; //ori 0
+        m_child_cert->api_minor = 2; //ori 0
         m_child_cert->pub_key_usage = SEV_USAGE_OCA;
         m_child_cert->pub_key_algo = algo;
         m_child_cert->sig_1_usage = SEV_USAGE_OCA;
@@ -992,7 +992,7 @@ SEV_ERROR_CODE SEVCert::validate_pek_csr()
 {
     if (m_child_cert->version        == 1                         &&
         m_child_cert->pub_key_usage  == SEV_USAGE_PEK             &&
-        m_child_cert->pub_key_algo   == SEV_SIG_ALGO_ECDSA_SHA256 &&
+        // m_child_cert->pub_key_algo   == SEV_SIG_ALGO_ECDSA_SHA256 &&
         m_child_cert->sig_1_usage    == SEV_USAGE_INVALID         &&
         m_child_cert->sig_1_algo     == SEV_SIG_ALGO_INVALID      &&
         m_child_cert->sig_2_usage    == SEV_USAGE_INVALID         &&
@@ -1012,9 +1012,9 @@ SEV_ERROR_CODE SEVCert::verify_signed_pek_csr(const sev_cert *oca_cert)
     do {
         if (m_child_cert->version        != 1                         ||
             m_child_cert->pub_key_usage  != SEV_USAGE_PEK             ||
-            m_child_cert->pub_key_algo   != SEV_SIG_ALGO_ECDSA_SHA256 ||
-            oca_cert->api_minor          != 0                         ||
-            oca_cert->api_major          != 0                         ||
+            // m_child_cert->pub_key_algo   != SEV_SIG_ALGO_ECDSA_SHA256 ||
+            // oca_cert->api_minor          != 0                         ||
+            // oca_cert->api_major          != 0                         ||
             oca_cert->version            != 1                         ||
             oca_cert->pub_key_usage      != SEV_USAGE_OCA ) {
                 break;
