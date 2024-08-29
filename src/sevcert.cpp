@@ -16,6 +16,7 @@
 
 #include "crypto.h"
 #include "sevcert.h"
+#include "sevapi.h"
 #include "utilities.h"
 #include <openssl/bn.h>
 #include <openssl/ec.h>
@@ -335,6 +336,91 @@ bool SEVCert::create_godh_cert(EVP_PKEY **godh_key_pair, uint8_t api_major,
     return cmd_ret;
 }
 
+bool SEVCert::create_pdh_cert(EVP_PKEY **pdh_key_pair, EVP_PKEY **pek_key_pair,uint8_t api_major,
+                               uint8_t api_minor)
+{
+    bool cmd_ret = false;
+    
+        if (!pdh_key_pair || !pek_key_pair)
+            return false;
+    
+        do {
+            memset(m_child_cert, 0, sizeof(sev_cert));
+    
+            m_child_cert->version = SEV_CERT_MAX_VERSION;
+            m_child_cert->api_major = api_major;
+            m_child_cert->api_minor = api_minor;
+            m_child_cert->pub_key_usage = SEV_USAGE_PDH;
+            m_child_cert->pub_key_algo = SEV_SIG_ALGO_ECDH_SHA256;
+            m_child_cert->sig_1_usage = SEV_USAGE_PEK;
+            m_child_cert->sig_1_algo = SEV_SIG_ALGO_ECDSA_SHA256;
+            m_child_cert->sig_2_usage = SEV_USAGE_INVALID;
+            m_child_cert->sig_2_algo = SEV_SIG_ALGO_INVALID;
+    
+            // Set the pubkey portion of the cert
+            if (decompile_public_key_into_certificate(m_child_cert, *pdh_key_pair) != STATUS_SUCCESS)
+                break;
+    
+            /*
+            * Set the rest of the params and sign the signature with the newly
+            * generated GODH privkey
+            * Technically this step is not necessary, as the firmware doesn't
+            * validate the GODH signature
+            */
+            if (!sign_with_key(SEV_CERT_MAX_VERSION, SEV_USAGE_PDH, SEV_SIG_ALGO_ECDH_SHA256,
+                            pek_key_pair, SEV_USAGE_PEK, SEV_SIG_ALGO_ECDH_SHA256))
+                break;
+    
+            cmd_ret = true;
+        } while (0);
+    
+        return cmd_ret;
+}
+
+/**
+ * Description:   Populates an empty pek using an existing OCA keypair
+ * Typical Usage: Used to generate the migration helper PEK keypair and certs;
+ * Parameters:    [pek_key_pair] used to populate the cert and future signed the pdh cert
+ *                [oca_key_pair] the input pub/priv key pair used to signed the pek cert
+ *                [algo] the algorithm with which to create the pubkey and
+ *                  signature, ECDSA or RSA, and SHA256 or SHA384
+ */
+bool SEVCert::create_pek_cert(EVP_PKEY **pek_key_pair, EVP_PKEY **oca_key_pair,uint8_t api_major,
+                               uint8_t api_minor,SEV_SIG_ALGO algo){
+    bool cmd_ret = false;
+    if(!pek_key_pair || !oca_key_pair)
+        return false;
+
+    do{
+        memset(m_child_cert, 0 , sizeof(sev_cert));
+
+        m_child_cert->version = SEV_CERT_MAX_VERSION;
+        m_child_cert->api_major = api_major;
+        m_child_cert->api_minor = api_minor;
+
+        m_child_cert->pub_key_usage = SEV_USAGE_PEK;
+        m_child_cert->pub_key_algo = algo;
+        //check inserted-platform's pek cert, OCA signature is located in sig_1
+        m_child_cert->sig_1_usage = SEV_USAGE_OCA;
+        m_child_cert->sig_1_algo = algo;
+
+        m_child_cert->sig_2_usage = SEV_USAGE_INVALID;
+        m_child_cert->sig_2_algo = SEV_SIG_ALGO_INVALID;
+
+        //set the pubkey portion of the cert
+        if(decompile_public_key_into_certificate(m_child_cert, *pek_key_pair) != STATUS_SUCCESS)
+            break;
+            
+        //set the rest of the params and sign the signature with the newly generated OCA privkey
+        if(!sign_with_key(SEV_CERT_MAX_VERSION, SEV_USAGE_PEK, algo, oca_key_pair, SEV_USAGE_OCA, SEV_SIG_ALGO_ECDSA_SHA256))
+            break;
+        
+        cmd_ret = true;
+
+    }while(0);
+    return cmd_ret;
+}
+
 /**
  * Description:   Populates an empty sev_cert using an existing ECDH keypair
  * Typical Usage: Used to generate the Guest Owner Diffie-Hellman cert used in
@@ -355,8 +441,8 @@ bool SEVCert::create_oca_cert(EVP_PKEY **oca_key_pair, SEV_SIG_ALGO algo)
         memset(m_child_cert, 0, sizeof(sev_cert));
 
         m_child_cert->version = SEV_CERT_MAX_VERSION;
-        m_child_cert->api_major = 1; //ori 0
-        m_child_cert->api_minor = 2; //ori 0
+        m_child_cert->api_major = 0; //ori 0, change back
+        m_child_cert->api_minor = 0; //ori 0, change back
         m_child_cert->pub_key_usage = SEV_USAGE_OCA;
         m_child_cert->pub_key_algo = algo;
         m_child_cert->sig_1_usage = SEV_USAGE_OCA;
@@ -992,7 +1078,7 @@ SEV_ERROR_CODE SEVCert::validate_pek_csr()
 {
     if (m_child_cert->version        == 1                         &&
         m_child_cert->pub_key_usage  == SEV_USAGE_PEK             &&
-        // m_child_cert->pub_key_algo   == SEV_SIG_ALGO_ECDSA_SHA256 &&
+        m_child_cert->pub_key_algo   == SEV_SIG_ALGO_ECDSA_SHA256 && //change back to against de45cc2c2f7998e078363c6127a0c340d8da4a30
         m_child_cert->sig_1_usage    == SEV_USAGE_INVALID         &&
         m_child_cert->sig_1_algo     == SEV_SIG_ALGO_INVALID      &&
         m_child_cert->sig_2_usage    == SEV_USAGE_INVALID         &&
@@ -1012,9 +1098,9 @@ SEV_ERROR_CODE SEVCert::verify_signed_pek_csr(const sev_cert *oca_cert)
     do {
         if (m_child_cert->version        != 1                         ||
             m_child_cert->pub_key_usage  != SEV_USAGE_PEK             ||
-            // m_child_cert->pub_key_algo   != SEV_SIG_ALGO_ECDSA_SHA256 ||
-            // oca_cert->api_minor          != 0                         ||
-            // oca_cert->api_major          != 0                         ||
+            m_child_cert->pub_key_algo   != SEV_SIG_ALGO_ECDSA_SHA256 || //change back against de45cc2c2f7998e078363c6127a0c340d8da4a30
+            oca_cert->api_minor          != 0                         ||
+            oca_cert->api_major          != 0                         ||
             oca_cert->version            != 1                         ||
             oca_cert->pub_key_usage      != SEV_USAGE_OCA ) {
                 break;

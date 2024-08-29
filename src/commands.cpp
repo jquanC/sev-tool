@@ -21,6 +21,7 @@
 #include "sevcert.h"
 #include "utilities.h"      // for WriteToFile
 #include "x509cert.h"
+#include <openssl/evp.h>
 #include <openssl/hmac.h>   // for calc_measurement
 #include <openssl/x509.h>
 #include <openssl/x509v3.h>
@@ -1173,6 +1174,122 @@ int Command::validate_cert_chain_vcek(void)
     X509_free(x509_ark);
 
     return (int)cmd_ret;
+}
+
+int Command::mh_export_cert_key(void){
+    //SevCert objs
+    sev_cert dummy_pdh;
+    sev_cert dummy_pek;
+    sev_cert dummy_oca;
+    SEVCert oca_obj(&dummy_oca);
+    SEVCert pdh_obj(&dummy_pdh);
+    SEVCert pek_obj(&dummy_pek);
+    int cmd_ret = STATUS_SUCCESS;
+
+    //keypairs
+    EVP_PKEY *pek_key_pair = NULL;
+    EVP_PKEY *pdh_key_pair = NULL;
+    EVP_PKEY *oca_key_pair = NULL;
+
+    //file paths and names
+    std::string OCA_path = m_output_folder + OCA_FILENAME;
+    std::string oca_priv_key_pem = m_output_folder + "oca_priv_key.pem";
+    std::string PEK_path = m_output_folder + PEK_FILENAME;
+    std::string pek_priv_key_pem = m_output_folder + "pek_priv_key.pem";
+    std::string PDH_path = m_output_folder + PDH_FILENAME;
+    std::string pdh_priv_key_pem = m_output_folder + "pdh_priv_key.pem";
+
+    do{
+    //1. create and output OCA cert and priv_key    
+    //in cypto.h, function default use SEV_EC curve is SEV_EC_P384, section D.1.2.3 of [FIPS 186-4] in SEV Spec.
+    //oca isself-signed;
+    //1.1 create OCA keypait
+    if(!generate_ecdh_key_pair(&oca_key_pair)){
+        printf("Error generating new OCA ECDH keypair\n");
+        cmd_ret = ERROR_UNSUPPORTED;
+        break;
+    }
+    //1.2 create OCA cert
+    if(!oca_obj.create_oca_cert(&oca_key_pair, SEV_SIG_ALGO_ECDSA_SHA256)){
+        printf("Error creating OCA certificate\n");
+        cmd_ret = ERROR_INVALID_CERTIFICATE;
+        break;
+    }
+    //1.3 将证书写道当前路径
+    //size_t oca_size; not to check the size at the current;
+    sev::write_file(OCA_path,oca_obj.data(),sizeof(sev_cert));
+    //1.4 将私钥写道当前路径
+    if(!write_priv_key_pem(oca_priv_key_pem, oca_key_pair)){
+        printf("Error writting OCA ECDH privkey pem file\n");
+        cmd_ret = ERROR_UNSUPPORTED;
+        break;
+    }
+    //2. create and output PEK cert and priv_key
+    //2.1 create PEK keypair
+    if(!generate_ecdh_key_pair(&pek_key_pair)){
+        printf("Error generating new PEK ECDH keypair\n");
+        cmd_ret = ERROR_UNSUPPORTED;
+        break;
+    }
+    //2.2 create pek cert
+    if(!pek_obj.create_pek_cert(&pek_key_pair, &oca_key_pair,1,37, SEV_SIG_ALGO_ECDSA_SHA256)){
+        printf("Error creating PEK certificate\n");
+        cmd_ret = ERROR_INVALID_CERTIFICATE;
+        break;
+    }
+    //2.3 将证书写道当前路径
+    sev::write_file(PEK_path, pek_obj.data(), sizeof(sev_cert));
+    //2.4 将私钥写道当前路径
+    if(!write_priv_key_pem(pek_priv_key_pem, pek_key_pair)){
+        printf("Error writting PEK ECDH privkey pem file\n");
+        cmd_ret = ERROR_UNSUPPORTED;
+        break;
+    }   
+    
+    //3. create and output PDH cert and priv_key
+    //3.1 create ecdh keypair
+    if(!generate_ecdh_key_pair(&pdh_key_pair)){
+        printf("Error generating new PDH ECDH keypair\n");
+        cmd_ret = ERROR_UNSUPPORTED;
+        break;
+    }
+    //3.2 create pdh cert
+    if(!pdh_obj.create_pdh_cert(&pdh_key_pair, &pek_key_pair,1,37)){
+        printf("Error creating PDH certificate\n");
+        cmd_ret = ERROR_INVALID_CERTIFICATE;
+        break;
+    }
+    //3.3 将证书写道当前路径
+    sev::write_file(PDH_path, pdh_obj.data(), sizeof(sev_cert));
+    //3.4 将私钥写道当前路径
+    if(!write_priv_key_pem(pdh_priv_key_pem, pdh_key_pair)){
+        printf("Error writting PDH ECDH privkey pem file\n");  
+        cmd_ret = ERROR_UNSUPPORTED; 
+        break;
+    }
+    //4 certs validation process
+    printf("Now the certs are generated and output in the path. Next step is validation using the parent-cert to verify the child-cert\n");
+    if(oca_obj.verify_sev_cert(&dummy_oca)!=0){
+        printf("Error verifying the oca cert\n");
+        cmd_ret = ERROR_INVALID_CERTIFICATE;
+        break;
+    }
+    if(pek_obj.verify_sev_cert(&dummy_oca)!=0){
+        printf("Error verifying the pek cert\n");
+        cmd_ret = ERROR_INVALID_CERTIFICATE;
+        break;
+        /* note that normal pek cert should have two signature;
+        * Currently the pekcert generated for MH only have ones;
+        * add anothr cek(ECDSA curve P-384, signature) if necessay(to-do)*/
+    }
+    if(pdh_obj.verify_sev_cert(&dummy_pek)!=0){
+        printf("Error verifying the oca cert\n");
+        cmd_ret = ERROR_INVALID_CERTIFICATE;
+        break;
+    }
+    
+    }while(0);
+    return cmd_ret;
 }
 
 // --------------------------------------------------------------- //

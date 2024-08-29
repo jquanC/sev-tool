@@ -61,8 +61,12 @@ public:
     bool create_godh_cert(EVP_PKEY **godh_key_pair,
                           uint8_t api_major,
                           uint8_t api_minor);
+    bool create_pdh_cert(EVP_PKEY **pdh_key_pair, EVP_PKEY **pek_key_pair,uint8_t api_major,
+                               uint8_t api_minor);
     bool create_oca_cert(EVP_PKEY **oca_key_pair,
                          SEV_SIG_ALGO algo);
+    bool create_pek_cert(EVP_PKEY **pek_key_pair, EVP_PKEY **oca_key_pair,uint8_t api_major,
+                               uint8_t api_minor,SEV_SIG_ALGO algo);
     bool sign_with_key(uint32_t version, uint32_t pub_key_usage,
                        uint32_t pub_key_algorithm, EVP_PKEY **priv_key,
                        uint32_t sig1_usage, const SEV_SIG_ALGO sig1_algo);
