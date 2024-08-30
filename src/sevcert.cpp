@@ -368,7 +368,7 @@ bool SEVCert::create_pdh_cert(EVP_PKEY **pdh_key_pair, EVP_PKEY **pek_key_pair,u
             * validate the GODH signature
             */
             if (!sign_with_key(SEV_CERT_MAX_VERSION, SEV_USAGE_PDH, SEV_SIG_ALGO_ECDH_SHA256,
-                            pek_key_pair, SEV_USAGE_PEK, SEV_SIG_ALGO_ECDH_SHA256))
+                            pek_key_pair, SEV_USAGE_PEK, SEV_SIG_ALGO_ECDSA_SHA256))
                 break;
     
             cmd_ret = true;
