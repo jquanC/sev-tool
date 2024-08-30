@@ -68,7 +68,7 @@ const char help_array[] =  "The following commands are supported:\n" \
                     "  validate_cert_chain_vcek\n" \
                     "  export_cert_chain_vcek\n" \
                     "Migration Helper commands:\n" \
-                    "  MH_cert_key_gen\n" \
+                    "  mh_cert_key_gen\n" \
                     ;
 
 /* Flag set by '--verbose' */
@@ -106,7 +106,7 @@ static struct option long_options[] =
     {"validate_guest_report",    no_argument,       0, 'y'}, // SNP GuestRequest ReportRequest
     {"validate_cert_chain_vcek", no_argument,       0, 'z'},
     /* Migration Helper commands */
-    {"MH_cert_key_gen",no_argument,0,'M'},
+    {"mh_cert_key_gen",no_argument,0,'M'},
     /* Run tests */
     {"test_all",             no_argument,       0, 'T'},
 
@@ -126,6 +126,7 @@ int main(int argc, char **argv)
 
     while ((c = getopt_long (argc, argv, "hio:", long_options, &option_index)) != -1)
     {
+        printf("reach switch\n", c);
         switch (c) {
             case 'h':           // help
             case 'H': {

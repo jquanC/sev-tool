@@ -1232,7 +1232,7 @@ int Command::mh_export_cert_key(void){
         break;
     }
     //2.2 create pek cert
-    if(!pek_obj.create_pek_cert(&pek_key_pair, &oca_key_pair,1,37, SEV_SIG_ALGO_ECDSA_SHA256)){
+    if(!pek_obj.create_pek_cert(&pek_key_pair, &oca_key_pair,0x1,0x37, SEV_SIG_ALGO_ECDSA_SHA256)){
         printf("Error creating PEK certificate\n");
         cmd_ret = ERROR_INVALID_CERTIFICATE;
         break;
@@ -1254,7 +1254,7 @@ int Command::mh_export_cert_key(void){
         break;
     }
     //3.2 create pdh cert
-    if(!pdh_obj.create_pdh_cert(&pdh_key_pair, &pek_key_pair,1,37)){
+    if(!pdh_obj.create_pdh_cert(&pdh_key_pair, &pek_key_pair,0x1,0x37)){
         printf("Error creating PDH certificate\n");
         cmd_ret = ERROR_INVALID_CERTIFICATE;
         break;
