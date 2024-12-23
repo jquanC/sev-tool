@@ -396,6 +396,8 @@ bool digest_sha(const void *msg, size_t msg_len, uint8_t *digest,
     bool ret = false;
 
     do {    //TODO 384 vs 512 is all a mess
+            /* •在处理SHA-384时，代码使用了SHA512_CTX上下文，这是因为SHA-384和SHA-512都基于SHA-512内部状态机，但它们有不同的初始向量（IV）和输出长度。虽然可以共用相同的上下文结构，但这种做法可能会引起混淆。 */
+            /* ECDSA with SHA-384 (curve P-384) 是更推荐的组合；P-384曲线提供了大约192位的安全强度，而SHA-384哈希函数也提供相似级别的安全性（192位）。因此，它们被认为是匹配良好的一对。 */
         if ((sha_type == SHA_TYPE_256 && digest_len != SHA256_DIGEST_LENGTH)/* ||
             (sha_type == SHA_TYPE_384 && digest_len != SHA384_DIGEST_LENGTH)*/)
                 break;

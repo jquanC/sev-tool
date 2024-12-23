@@ -1192,12 +1192,15 @@ int Command::mh_export_cert_key(void){
     EVP_PKEY *oca_key_pair = NULL;
 
     //file paths and names
-    std::string OCA_path = m_output_folder + OCA_FILENAME;
-    std::string oca_priv_key_pem = m_output_folder + "oca_priv_key.pem";
-    std::string PEK_path = m_output_folder + PEK_FILENAME;
-    std::string pek_priv_key_pem = m_output_folder + "pek_priv_key.pem";
-    std::string PDH_path = m_output_folder + PDH_FILENAME;
-    std::string pdh_priv_key_pem = m_output_folder + "pdh_priv_key.pem";
+    std::string OCA_path = m_output_folder + "mh_" + OCA_FILENAME;
+    std::string oca_priv_key_pem = m_output_folder + "mh_oca_priv_key.pem";
+    std::string oca_pub_key_pem = m_output_folder + "mh_oca_pub_key.pem";
+    std::string PEK_path = m_output_folder + "mh_" + PEK_FILENAME;
+    std::string pek_priv_key_pem = m_output_folder + "mh_pek_priv_key.pem";
+    std::string pek_pub_key_pem = m_output_folder + "mh_pek_pub_key.pem";
+    std::string PDH_path = m_output_folder + "mh_" + PDH_FILENAME;
+    std::string pdh_priv_key_pem = m_output_folder + "mh_pdh_priv_key.pem";
+    std::string pdh_pub_key_pem = m_output_folder + "mh_pdh_pub_key.pem";
 
     do{
     //1. create and output OCA cert and priv_key    
@@ -1224,6 +1227,12 @@ int Command::mh_export_cert_key(void){
         cmd_ret = ERROR_UNSUPPORTED;
         break;
     }
+    //1.5 将公钥写到当前路径 (pem 文件)
+    if(!write_pub_key_pem(oca_pub_key_pem, oca_key_pair)){
+        printf("Error writting OCA ECDH pubkey pem file\n");
+        cmd_ret = ERROR_UNSUPPORTED;
+        break;
+    }
     //2. create and output PEK cert and priv_key
     //2.1 create PEK keypair
     if(!generate_ecdh_key_pair(&pek_key_pair)){
@@ -1245,7 +1254,12 @@ int Command::mh_export_cert_key(void){
         cmd_ret = ERROR_UNSUPPORTED;
         break;
     }   
-    
+    //2.5 将公钥写到当前路径 (pem 文件)
+    if(!write_pub_key_pem(pek_pub_key_pem, pek_key_pair)){
+        printf("Error writting PEK ECDH pubkey pem file\n");
+        cmd_ret = ERROR_UNSUPPORTED;
+        break;
+    }
     //3. create and output PDH cert and priv_key
     //3.1 create ecdh keypair
     if(!generate_ecdh_key_pair(&pdh_key_pair)){
@@ -1265,6 +1279,12 @@ int Command::mh_export_cert_key(void){
     if(!write_priv_key_pem(pdh_priv_key_pem, pdh_key_pair)){
         printf("Error writting PDH ECDH privkey pem file\n");  
         cmd_ret = ERROR_UNSUPPORTED; 
+        break;
+    }
+    //3.5 将公钥写到当前路径 (pem 文件)
+    if(!write_pub_key_pem(pdh_pub_key_pem, pdh_key_pair)){
+        printf("Error writting PDH ECDH pubkey pem file\n");
+        cmd_ret = ERROR_UNSUPPORTED;
         break;
     }
     //4 certs validation process
