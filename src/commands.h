@@ -159,6 +159,7 @@ public:
     int validate_guest_report(void);
     int validate_cert_chain_vcek(void);
     int mh_export_cert_key(void);
+    int mh_export_csv_cert_key(void);
 };
 
 #endif /* COMMANDS_H */
