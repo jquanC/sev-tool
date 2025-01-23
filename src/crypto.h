@@ -76,6 +76,7 @@ typedef enum __attribute__((mode(QI))) SHA_TYPE
 {
     SHA_TYPE_256 = 0,
     SHA_TYPE_384 = 1,
+    SHA_TYPE_SM3 = 2,
 } SHA_TYPE;
 
 // NIST Compliant KDF
@@ -111,8 +112,15 @@ bool ecdsa_verify(sev_sig *sig, EVP_PKEY **pub_evp_key, uint8_t *digest, size_t 
 
 bool sign_message(sev_sig *sig, EVP_PKEY **evp_key_pair, const uint8_t *msg,
                   size_t length, const SEV_SIG_ALGO algo);
+bool sign_message_csv(sev_sig *sig, EVP_PKEY **evp_key_pair, const uint8_t *msg,
+                 size_t length, const uint8_t * user_id, size_t user_id_len,const SEV_SIG_ALGO algo);                  
 bool verify_message(sev_sig *sig, EVP_PKEY **evp_key_pair, const uint8_t *msg,
                     size_t length, const SEV_SIG_ALGO algo);
+bool verify_message_csv(sev_sig *sig, EVP_PKEY **evp_key_pair, const uint8_t *msg,
+                    size_t length, const uint8_t * user_id, size_t user_id_len, const SEV_SIG_ALGO algo);
+static bool sm2sa_sign(sev_sig *sig, EVP_PKEY **priv_evp_key,
+                       const uint8_t *msg, size_t length, const uint8_t * user_id, size_t user_id_len);
+bool sm2sa_verify(sev_sig *sig, EVP_PKEY **pub_evp_key, const uint8_t *msg, size_t length, const uint8_t *user_id, size_t user_id_len);
 
 SEV_ERROR_CODE aes_256_gcm_authenticated_encrypt(const uint8_t *p_key, size_t key_size,
                                                  const uint8_t *p_aad, size_t aad_size,

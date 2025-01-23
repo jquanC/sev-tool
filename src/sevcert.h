@@ -63,9 +63,15 @@ public:
                           uint8_t api_minor);
     bool create_pdh_cert(EVP_PKEY **pdh_key_pair, EVP_PKEY **pek_key_pair,uint8_t api_major,
                                uint8_t api_minor);
+    bool create_pdh_cert_csv(EVP_PKEY **pdh_key_pair, EVP_PKEY **pek_key_pair,uint8_t api_major,
+                               uint8_t api_minor);
     bool create_oca_cert(EVP_PKEY **oca_key_pair,
                          SEV_SIG_ALGO algo);
+    bool create_oca_cert_csv(EVP_PKEY **oca_key_pair,
+                         SEV_SIG_ALGO algo);                     
     bool create_pek_cert(EVP_PKEY **pek_key_pair, EVP_PKEY **oca_key_pair,uint8_t api_major,
+                               uint8_t api_minor,SEV_SIG_ALGO algo);
+    bool create_pek_cert_csv(EVP_PKEY **pek_key_pair, EVP_PKEY **oca_key_pair,uint8_t api_major,
                                uint8_t api_minor,SEV_SIG_ALGO algo);
     bool sign_with_key(uint32_t version, uint32_t pub_key_usage,
                        uint32_t pub_key_algorithm, EVP_PKEY **priv_key,
@@ -74,6 +80,7 @@ public:
                                                        EVP_PKEY *evp_pub_key);
     SEV_ERROR_CODE decompile_public_key_into_certificate(sev_cert *cert,
                                                          EVP_PKEY *evp_pubkey);
+    SEV_ERROR_CODE decompile_public_key_into_certificate_csv(sev_cert *cert, EVP_PKEY *evp_pubkey);                                                     
     SEV_ERROR_CODE verify_sev_cert(const sev_cert *parent_cert1,
                                    const sev_cert *parent_cert2 = NULL);
     SEV_ERROR_CODE validate_pek_csr();

@@ -15,11 +15,18 @@
  **************************************************************************/
 
 #include "crypto.h"
+#include "sevapi.h"
 #include "sevcert.h"
 
+#include <cstddef>
+#include <cstdint>
+#include <cstdio>
 #include <fstream>
+#include <openssl/bn.h>
+#include <openssl/ec.h>
 #include <openssl/evp.h>
 #include <openssl/hmac.h>
+#include <openssl/objects.h>
 #include <openssl/ts.h>
 #include <openssl/ecdh.h>
 
@@ -294,8 +301,44 @@ bool generate_ecdh_key_pair(EVP_PKEY **evp_key_pair, SEV_EC curve)
         // New up the EC_KEY with the EC_GROUP
         if (curve == SEV_EC_P256)
             nid = EC_curve_nist2nid("P-256");   // NID_secp256r1
-        else
+        else if(curve == SEV_EC_P384)
             nid = EC_curve_nist2nid("P-384");   // NID_secp384r1
+        else{
+            // SM2 flow:
+            //gen sm2 keypair
+            //a) 显示设置 曲线参数
+            EC_GROUP *group = EC_GROUP_new_by_curve_name(NID_sm2);// SM2 Curve
+            
+            
+            //b) 创建参数上下文 （算法标识这里采用的是ec）
+            // EVP_PKEY_CTX *ctx = EVP_PKEY_CTX_new_id(EVP_PKEY_SM2, NULL);
+            EVP_PKEY_CTX *ctx = EVP_PKEY_CTX_new_id(EVP_PKEY_EC, NULL); // pkcs8 标准
+            if(!ctx){
+                printf("EVP_PKEY_CTX_new_id failed\n");
+                return false;
+            }
+
+            //c) 校验
+             EVP_PKEY *params = NULL;
+            if(EVP_PKEY_keygen_init(ctx) <= 0 || 
+                EVP_PKEY_CTX_set_ec_paramgen_curve_nid(ctx, NID_sm2) <= 0 ||
+                EVP_PKEY_paramgen(ctx, &params) <= 0){
+                printf("EVP_PKEY_keygen_init failed\n");
+                EVP_PKEY_CTX_free(ctx);
+                return false;
+            }
+
+            //d) 生成密钥对
+            ctx = EVP_PKEY_CTX_new(params, NULL);
+            if(!ctx || EVP_PKEY_keygen_init(ctx) <= 0 || 
+                EVP_PKEY_keygen(ctx, evp_key_pair) <= 0){
+                printf("EVP_PKEY_keygen failed\n");
+                EVP_PKEY_CTX_free(ctx);
+                return false;
+            }
+            return true;
+        }
+        // other flow:
         ec_key_pair = EC_KEY_new_by_curve_name(nid);
 
         // Create the new public/private EC key pair. EC_key must have a group
@@ -421,6 +464,79 @@ bool digest_sha(const void *msg, size_t msg_len, uint8_t *digest,
                 break;
             if (SHA384_Final(digest, &context) != 1)
                 break;
+        }
+
+        ret = true;
+    } while (0);
+
+    return ret;
+}
+
+bool digest_sm3(const void *msg, size_t msg_len, uint8_t *digest,
+                size_t digest_len, SHA_TYPE sha_type)
+{
+    bool ret = false;
+
+    do {    //TODO 384 vs 512 is all a mess
+            /* •在处理SHA-384时，代码使用了SHA512_CTX上下文，这是因为SHA-384和SHA-512都基于SHA-512内部状态机，但它们有不同的初始向量（IV）和输出长度。虽然可以共用相同的上下文结构，但这种做法可能会引起混淆。 */
+            /* ECDSA with SHA-384 (curve P-384) 是更推荐的组合；P-384曲线提供了大约192位的安全强度，而SHA-384哈希函数也提供相似级别的安全性（192位）。因此，它们被认为是匹配良好的一对。 */
+        if ((sha_type == SHA_TYPE_256 && digest_len != SHA256_DIGEST_LENGTH)/* ||
+            (sha_type == SHA_TYPE_384 && digest_len != SHA384_DIGEST_LENGTH)*/)
+                break;
+
+        if (sha_type == SHA_TYPE_256) {
+            SHA256_CTX context;
+
+            if (SHA256_Init(&context) != 1)
+                break;
+            if (SHA256_Update(&context, (void *)msg, msg_len) != 1)
+                break;
+            if (SHA256_Final(digest, &context) != 1)
+                break;
+        }
+        else if (sha_type == SHA_TYPE_384) {
+            SHA512_CTX context;
+
+            if (SHA384_Init(&context) != 1)
+                break;
+            if (SHA384_Update(&context, (void *)msg, msg_len) != 1)
+                break;
+            if (SHA384_Final(digest, &context) != 1)
+                break;
+        }else if(sha_type == SHA_TYPE_SM3){
+            EVP_MD_CTX *md_ctx = EVP_MD_CTX_new();
+            if (md_ctx == NULL){
+                printf("Error: EVP_MD_CTX_new failed\n");
+                break;
+            }
+                
+            const EVP_MD *md = EVP_sm3();
+            if(md == NULL || EVP_DigestInit_ex(md_ctx, md, NULL) != 1){
+                printf("Error: EVP_sm3() or EVP_DigestInit_ex failed\n");
+                break;
+            }
+            if(EVP_DigestUpdate(md_ctx, msg, msg_len) != 1){
+                printf("Error: EVP_DigestUpdate failed\n");
+                break;
+            }
+            unsigned int outlen=0;
+            if(EVP_DigestFinal_ex(md_ctx, digest, &outlen) != 1){
+                printf("Error: EVP_DigestFinal_ex failed\n");
+                break;
+            }
+            if(outlen != digest_len){
+                printf("Error: EVP_DigestFinal_ex returned wrong length\n");
+                break;
+            }
+            /*  Referrence 
+                SM3_CTX context;
+                if (SM3_Init(&context) != 1)
+                    break;
+                if (SM3_Update(&context, (void *)msg, msg_len) != 1)
+                    break;
+                if (SM3_Final(digest, &context) != 1)
+                    break;        
+            */
         }
 
         ret = true;
@@ -597,6 +713,112 @@ static bool ecdsa_sign(sev_sig *sig, EVP_PKEY **priv_evp_key,
     return is_valid;
 }
 
+
+/* digest ptr to unhased contend */
+/* 在签名函数中，他们使用了EVP_DigestSign系列函数生成签名，然后将DER格式的签名转换为ECDSA_SIG结构，提取r和s，存储到sig结构体中。验证时，他们又从sig中读取r和s，重新构造ECDSA_SIG，再转换成DER格式进行验证 */
+static bool sm2sa_sign(sev_sig *sig, EVP_PKEY **priv_evp_key,
+                       const uint8_t *msg, size_t length, const uint8_t * user_id, size_t user_id_len){
+    bool is_valid = false;
+    // EC_KEY *priv_ec_key = NULL;
+    EVP_MD_CTX *mdctx = NULL;
+    uint8_t *signature = NULL;
+    uint8_t *signature_ptr = NULL;
+    EVP_PKEY_CTX *pctx = NULL;
+
+    const BIGNUM *r = NULL;
+    const BIGNUM *s = NULL;
+    ECDSA_SIG *sm2_sig = NULL;
+    size_t sig_len;
+
+    do {
+        if(EVP_PKEY_id(*priv_evp_key) != EVP_PKEY_SM2){
+            printf("Error: EVP_PKEY_id failed\n");
+            break;
+        }
+
+        // create a new EVP_MD_CTX
+        mdctx = EVP_MD_CTX_new();
+        if(!mdctx){
+            printf("Error: EVP_MD_CTX_new failed\n");
+            break;
+        }
+
+        // start sign process, set sm3 as the digest algorithm
+        const EVP_MD *sm3_md = EVP_sm3();
+        if(!sm3_md){
+            printf("Error: EVP_sm3 failed\n");
+            break;
+        }
+        if(EVP_DigestSignInit(mdctx, &pctx, sm3_md, NULL, *priv_evp_key) != 1){
+            printf("Error: EVP_DigestSignInit failed\n");
+            break;
+        }
+        // set context
+        if(!pctx){
+            printf("Error: get pctx in EVP_DigestSignInit failed\n");
+            break;
+        }
+        if(EVP_PKEY_CTX_set1_id(pctx, user_id, user_id_len)!=1){
+            printf("Error: EVP_PKEY_CTX_set1_id failed\n");
+            break;
+        }
+        
+        if(EVP_DigestSignUpdate(mdctx, msg, length) != 1){
+            printf("Error: EVP_DigestSignUpdate failed\n");
+            break;
+        }
+        // get the length of signature
+        if(EVP_DigestSignFinal(mdctx, NULL, &sig_len) != 1){
+            printf("Error: EVP_DigestSignFinal failed\n");
+            break;
+        }
+        // allocate memory for signature
+        signature = (uint8_t *)OPENSSL_malloc(sig_len);
+        if(!signature){
+            printf("Error: OPENSSL_malloc failed\n");
+            break;
+        }
+        // store signature in val'signature', in DER format
+        if(EVP_DigestSignFinal(mdctx, signature, &sig_len) != 1){
+            printf("Error: EVP_DigestFinal failed\n");
+            break;
+        }
+
+        //trans Der-encoded signature to ECDSA_SIG
+        signature_ptr =signature;
+        sm2_sig = d2i_ECDSA_SIG(NULL, (const unsigned char**)&signature_ptr, sig_len);
+        if(!sm2_sig){
+            printf("Error: d2i_ECDSA_SIG failed\n");
+            //避免重复释放
+            // EVP_MD_CTX_free(mdctx);
+            // OPENSSL_free(signature); 
+            break;
+        }
+        // Extract the bignums from sm2_sig and store the signature in sig
+        ECDSA_SIG_get0(sm2_sig, &r, &s);
+        if (!BN_bn2lebinpad(r, sig->ecdsa.r, sizeof(sig->ecdsa.r)) ||
+            !BN_bn2lebinpad(s, sig->ecdsa.s, sizeof(sig->ecdsa.s))) {
+            printf("Error: BN_bn2binpad failed\n");
+            break;
+        }
+        // BN_bn2lebinpad(r, sig->ecdsa.r, sizeof(sev_ecdsa_sig::r));    // BigNum to Binary in Little Endian
+        // BN_bn2lebinpad(s, sig->ecdsa.s, sizeof(sev_ecdsa_sig::s));
+
+        is_valid = true;
+    } while (0);
+
+    // Free memory
+    ECDSA_SIG_free(sm2_sig);
+    OPENSSL_free(signature);//check point: the signaure (r,s) are copied to sig->ecdsa.r and sig->ecdsa.s
+    EVP_MD_CTX_free(mdctx);
+    //free mdctx的时候，会释放自动关联的pctx
+    // EVP_PKEY_CTX_free(pctx);
+    // EC_KEY_free(priv_ec_key);
+
+    return is_valid;
+}
+
+
 /**
  * It would be easier if we could just pass in the populated ECDSA_SIG from
  *  ecdsa_sign instead of using sev_sig to BigNums as the intermediary, but we
@@ -641,6 +863,76 @@ bool ecdsa_verify(sev_sig *sig, EVP_PKEY **pub_evp_key, uint8_t *digest, size_t 
     return is_valid;
 }
 
+bool sm2sa_verify(sev_sig *sig, EVP_PKEY **pub_evp_key, const uint8_t *msg, size_t length, const uint8_t *user_id, size_t user_id_len)
+{
+    bool is_valid = false;
+    EVP_MD_CTX *mdctx = NULL;
+    EVP_PKEY_CTX *pctx = NULL;
+    unsigned char *sig_der = NULL;
+    int sig_der_len;
+    ECDSA_SIG *ecdsa_sig = NULL;
+    BIGNUM *r = NULL;
+    BIGNUM *s = NULL;
+
+    do{
+        // create a new EVP_MD_CTX
+        mdctx = EVP_MD_CTX_new();
+        if (!mdctx){
+            printf("Error: EVP_MD_CTX_new failed\n");
+            break;
+        }   
+
+        // initialize the verification context
+        if (EVP_DigestVerifyInit(mdctx, &pctx, EVP_sm3(), NULL, *pub_evp_key) <= 0){
+            printf("Error: EVP_DigestVerifyInit failed\n");
+            break;
+        }
+
+        if (!pctx){
+            printf("Error: EVP_DigestVerifyInit failed\n");
+            break;
+        }
+
+        // set user ID
+        if (EVP_PKEY_CTX_set1_id(pctx, user_id, user_id_len) <= 0){
+            printf("Error: EVP_PKEY_CTX_set1_id failed\n");
+            break;
+        }
+            
+        // update ctx and raw msg
+        if (EVP_DigestVerifyUpdate(mdctx, msg, length) <= 0){
+            printf("Error: EVP_DigestVerifyUpdate failed\n");
+            break;
+        }
+
+        // extrac signature from sig, then turn into ECDSA_SIG and further turn into  DER format
+        r = BN_lebin2bn(sig->ecdsa.r, sizeof(sig->ecdsa.r),NULL);
+        s = BN_lebin2bn(sig->ecdsa.s, sizeof(sig->ecdsa.s),NULL);  
+        ecdsa_sig = ECDSA_SIG_new();
+        ECDSA_SIG_set0(ecdsa_sig, r, s);
+        sig_der_len = i2d_ECDSA_SIG(ecdsa_sig, &sig_der);
+        if (sig_der_len <= 0){
+            printf("Error: i2d_ECDSA_SIG failed\n");
+            break;
+        }
+
+        // verify the signature
+        if (EVP_DigestVerifyFinal(mdctx, sig_der, (size_t)sig_der_len) <= 0){
+            printf("Error: EVP_DigestVerifyFinal failed\n");
+            break;
+        }
+
+        is_valid = true; // 验证成功
+
+    }while(0);
+
+        // free resources
+    OPENSSL_free(sig_der);
+    EVP_MD_CTX_free(mdctx);
+    // EVP_PKEY_CTX_free(pctx);
+
+    return is_valid;
+}
 /**
  * A generic sign function that takes a byte array (not specifically an sev_cert)
  *  and signs it using an sev_sig
@@ -712,6 +1004,73 @@ static bool sign_verify_message(sev_sig *sig, EVP_PKEY **evp_key_pair, const uin
     return is_valid;
 }
 
+/* Extend the origin function: sign_verify_message to support SM2 algo in Hygon/CSV */
+/* evp_key_pair 可能是公钥可能是私钥； */
+/* sign: true = sign; false = verify */
+static bool sign_verify_message_csv(sev_sig *sig, EVP_PKEY **evp_key_pair, const uint8_t *msg,
+                                size_t length, const uint8_t *user_id,size_t user_id_len, const SEV_SIG_ALGO algo, bool sign)
+{
+    bool is_valid = false;
+    hmac_sha_256 sha_digest_256;   // Hash on the cert from Version to PubKey
+    hmac_sha_512 sha_digest_384;   // Hash on the cert from Version to PubKey
+    SHA_TYPE sha_type;
+    uint8_t *sha_digest = NULL;
+    size_t sha_length;
+    const bool pss = true;
+
+    do {
+        // Determine if SHA_TYPE is 256 bit or 384 bit
+        if (algo == SEV_SIG_ALGO_RSA_SHA256 || algo == SEV_SIG_ALGO_ECDSA_SHA256 ||
+            algo == SEV_SIG_ALGO_ECDH_SHA256)
+        {
+            sha_type = SHA_TYPE_256;
+            sha_digest = sha_digest_256;
+            sha_length = sizeof(hmac_sha_256);
+        }
+        else if (algo == SEV_SIG_ALGO_RSA_SHA384 || algo == SEV_SIG_ALGO_ECDSA_SHA384 ||
+                 algo == SEV_SIG_ALGO_ECDH_SHA384)
+        {
+            sha_type = SHA_TYPE_384;
+            sha_digest = sha_digest_384;
+            sha_length = sizeof(hmac_sha_512);
+        }
+        else if (algo == SIG_ALGO_TYPE_SM2_SA) 
+        {
+            sha_type = SHA_TYPE_SM3;
+            sha_digest = sha_digest_256;
+            sha_length = sizeof(hmac_sha_256);
+        }
+        else
+        {
+            break;
+        }
+     //直接用openssl 3的新方法，使用EVP的高级API
+
+        //  memset(sha_digest, 0, sha_length);
+
+        // Don't calculate the hash digest in advance 
+        // Calculate the hash digest using SM3
+        // if (!digest_sm3(msg, length, sha_digest, sha_length, sha_type))
+        //     break;
+
+        if(algo == SIG_ALGO_TYPE_SM2_SA){
+            if(sign && !sm2sa_sign(sig, evp_key_pair, msg, length,user_id,user_id_len))
+                break;
+            if(!sm2sa_verify(sig, evp_key_pair, msg, length,user_id,user_id_len)) //sm2sa_verify 还没实现
+                break;
+        }
+        else {
+            printf("Error: invalid signing algo. Can't sign");
+            break;                          // Invalid params
+        }
+
+
+        is_valid = true;
+    } while (0);
+
+    return is_valid;
+}
+
 bool sign_message(sev_sig *sig, EVP_PKEY **evp_key_pair, const uint8_t *msg,
                  size_t length, const SEV_SIG_ALGO algo)
 {
@@ -722,6 +1081,18 @@ bool verify_message(sev_sig *sig, EVP_PKEY **evp_key_pair, const uint8_t *msg,
                     size_t length, const SEV_SIG_ALGO algo)
 {
     return sign_verify_message(sig, evp_key_pair, msg, length, algo, false);
+}
+
+bool sign_message_csv(sev_sig *sig, EVP_PKEY **evp_key_pair, const uint8_t *msg,
+                 size_t length, const uint8_t * user_id, size_t user_id_len,const SEV_SIG_ALGO algo)
+{
+    return sign_verify_message_csv(sig, evp_key_pair, msg, length, user_id,user_id_len, algo, true);
+}
+
+bool verify_message_csv(sev_sig *sig, EVP_PKEY **evp_key_pair, const uint8_t *msg,
+                    size_t length, const uint8_t * user_id, size_t user_id_len, const SEV_SIG_ALGO algo)
+{
+    return sign_verify_message_csv(sig, evp_key_pair, msg,length, user_id,user_id_len,algo, false);
 }
 
 /**

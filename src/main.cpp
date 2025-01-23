@@ -69,6 +69,7 @@ const char help_array[] =  "The following commands are supported:\n" \
                     "  export_cert_chain_vcek\n" \
                     "Migration Helper commands:\n" \
                     "  mh_cert_key_gen\n" \
+                    "  mh_csv_cert_key_gen\n" \
                     ;
 
 /* Flag set by '--verbose' */
@@ -107,6 +108,7 @@ static struct option long_options[] =
     {"validate_cert_chain_vcek", no_argument,       0, 'z'},
     /* Migration Helper commands */
     {"mh_cert_key_gen",no_argument,0,'M'},
+    {"mh_csv_cert_key_gen",no_argument,0,'N'},
     /* Run tests */
     {"test_all",             no_argument,       0, 'T'},
 
@@ -319,6 +321,11 @@ int main(int argc, char **argv)
             case 'M': {         // jquan: add new command for migration helper
                 Command cmd(output_folder, verbose_flag, CCP_NOT_REQ);
                 cmd_ret = cmd.mh_export_cert_key();
+                break;
+            }
+            case 'N': {         // jquan: add new command for migration helper
+                Command cmd(output_folder, verbose_flag, CCP_NOT_REQ);
+                cmd_ret = cmd.mh_export_csv_cert_key();
                 break;
             }
             case 'T': {         // Run Tests
