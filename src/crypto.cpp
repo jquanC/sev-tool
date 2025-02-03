@@ -305,130 +305,26 @@ bool generate_ecdh_key_pair(EVP_PKEY **evp_key_pair, SEV_EC curve)
         else if(curve == SEV_EC_P384)
             nid = EC_curve_nist2nid("P-384");   // NID_secp384r1
         else{
-            
-        //测试另外方法
-            EVP_PKEY_CTX* ctx = EVP_PKEY_CTX_new_from_name(nullptr, "EC", nullptr);
-            if (!ctx){
-                printf("EVP_PKEY_CTX_new_from_name failed\n");
-                break;
-            }
-
-            if (EVP_PKEY_paramgen_init(ctx) <= 0)
-            {
-                printf("EVP_PKEY_paramgen_init failed\n");
-                break;
-            }
-            
-
-            // 设置SM2曲线参数
-            OSSL_PARAM params[] = {
-                OSSL_PARAM_construct_utf8_string("group", (char*)"SM2", 0),
-                OSSL_PARAM_END
-            };//"sm2 对吗"
-
-            if (EVP_PKEY_CTX_set_params(ctx, params) <= 0)
-            {
-                printf("EVP_PKEY_CTX_set_params failed\n");
-                break;
-            }
-                
-
-            EVP_PKEY* params_key = nullptr;
-            if (EVP_PKEY_paramgen(ctx, &params_key) <= 0)
-            {
-                printf("EVP_PKEY_paramgen failed\n");
-                break;
-            }
-
-            EVP_PKEY_CTX_free(ctx);
-            ctx = EVP_PKEY_CTX_new_from_pkey(nullptr, params_key, nullptr);
-            if (!ctx)
-            {
-                printf("EVP_PKEY_CTX_new_from_pkey failed\n");
-                break;
-            }
-
-            if (EVP_PKEY_keygen_init(ctx) <= 0){
-                printf("EVP_PKEY_keygen_init failed\n");
-                break;
-            }
-
-            EVP_PKEY* key = nullptr;
-            if (EVP_PKEY_generate(ctx, &key) <= 0)
-            {
-                printf("EVP_PKEY_generate failed\n");
-                break;
-            }
-
-            EVP_PKEY_CTX_free(ctx);
-            EVP_PKEY_free(params_key);
-            return true;
-
-/*             // SM2 flow:
-            // ===============参数生成阶段================
-            // EVP_PKEY_CTX *ctx = EVP_PKEY_CTX_new_id(EVP_PKEY_SM2, NULL);
-            EC_GROUP *group = EC_GROUP_new_by_curve_name(NID_sm2);
-            if(!group){
-                printf("EC_GROUP_new_by_curve_name failed\n");
-                return false;
-            }
-
-            EVP_PKEY_CTX *param_ctx = EVP_PKEY_CTX_new_id(EVP_PKEY_EC, NULL); // pkcs8 标准
-            if(!param_ctx){
+            // SM2 flow:
+            //gen sm2 keypair
+            EVP_PKEY_CTX *ctx = EVP_PKEY_CTX_new_id(EVP_PKEY_SM2, NULL);
+            if(!ctx){
                 printf("EVP_PKEY_CTX_new_id failed\n");
                 return false;
             }
-            
-            if(EVP_PKEY_paramgen_init(param_ctx) <= 0){
-                printf("EVP_PKEY_paramgen_init failed\n");
-                EVP_PKEY_CTX_free(param_ctx);
-                return false;
-            }
-
-            //校验
-             EVP_PKEY *params = NULL;
-            // if(EVP_PKEY_keygen_init(ctx) <= 0){
-            //     printf("EVP_PKEY_keygen_init failed\n");
-            //     EVP_PKEY_CTX_free(ctx);
-            //     return false;
-            // } 
-            if(EVP_PKEY_CTX_set_ec_paramgen_curve_nid(param_ctx, NID_sm2) <= 0){
-                printf("EVP_PKEY_CTX_set_ec_paramgen_curve_nid\n");
-                EVP_PKEY_CTX_free(param_ctx);
-                return false;
-            }
-            if(EVP_PKEY_paramgen(param_ctx, &params) <= 0){
-                printf("EVP_PKEY_paramgen\n");
-                EVP_PKEY_CTX_free(param_ctx);
-                return false;
-            }
-
-            //==================密钥生成阶段========================
-            //生成密钥对
-            EVP_PKEY_CTX *keygen_ctx = NULL;
-            keygen_ctx = EVP_PKEY_CTX_new(params, NULL);
-            if(!keygen_ctx || EVP_PKEY_keygen_init(keygen_ctx) <= 0){
+                
+            if(EVP_PKEY_keygen_init(ctx) <= 0){
                 printf("EVP_PKEY_keygen_init failed\n");
-                EVP_PKEY_CTX_free(keygen_ctx);
+                EVP_PKEY_CTX_free(ctx);
                 return false;
             }
-            if( EVP_PKEY_keygen(keygen_ctx, evp_key_pair) <= 0){
+            if(EVP_PKEY_keygen(ctx, evp_key_pair) <= 0){
                 printf("EVP_PKEY_keygen failed\n");
-                EVP_PKEY_CTX_free(keygen_ctx);
+                EVP_PKEY_CTX_free(ctx);
                 return false;
             }
-
-            // 关键：强制设置密钥类型为SM2
-            const EC_KEY *ec_key = EVP_PKEY_get0_EC_KEY(*evp_key_pair);
-            if (!ec_key) {
-                printf("EVP_PKEY_get0_EC_KEY failed\n");
-                return false;
-            
-            }
-            EC_KEY_set_group(ec_key, group);
-            EVP_PKEY_set_alias_type(*evp_key_pair, EVP_PKEY_SM2);
-
-            return true; */
+            EVP_PKEY_CTX_free(ctx);
+            return true;
         }
         // other flow:
         ec_key_pair = EC_KEY_new_by_curve_name(nid);
@@ -455,6 +351,119 @@ bool generate_ecdh_key_pair(EVP_PKEY **evp_key_pair, SEV_EC curve)
 
     return ret;
 }
+
+// bool generate_ecdh_key_pair(EVP_PKEY **evp_key_pair, SEV_EC curve)
+// {
+//     if (!evp_key_pair)
+//         return false;
+
+//     bool ret = false;
+//     int nid = 0;
+//     EC_KEY *ec_key_pair = NULL;
+
+//     do {
+//         // New up the Guest Owner's private EVP_PKEY
+//         if (!(*evp_key_pair = EVP_PKEY_new()))
+//             break;
+
+//         // New up the EC_KEY with the EC_GROUP
+//         if (curve == SEV_EC_P256)
+//             nid = EC_curve_nist2nid("P-256");   // NID_secp256r1
+//         else if(curve == SEV_EC_P384)
+//             nid = EC_curve_nist2nid("P-384");   // NID_secp384r1
+//         else{
+        
+//         // SM2 flow:
+//             // ===============参数生成阶段================
+//             // EVP_PKEY_CTX *ctx = EVP_PKEY_CTX_new_id(EVP_PKEY_SM2, NULL);
+//             EC_GROUP *group = EC_GROUP_new_by_curve_name(NID_sm2);
+//             if(!group){
+//                 printf("EC_GROUP_new_by_curve_name failed\n");
+//                 return false;
+//             }
+
+//             EVP_PKEY_CTX *param_ctx = EVP_PKEY_CTX_new_id(EVP_PKEY_EC, NULL); // pkcs8 标准
+//             if(!param_ctx){
+//                 printf("EVP_PKEY_CTX_new_id failed\n");
+//                 return false;
+//             }
+            
+//             if(EVP_PKEY_paramgen_init(param_ctx) <= 0){
+//                 printf("EVP_PKEY_paramgen_init failed\n");
+//                 EVP_PKEY_CTX_free(param_ctx);
+//                 return false;
+//             }
+
+//             //校验
+//              EVP_PKEY *params = NULL;
+//             // if(EVP_PKEY_keygen_init(ctx) <= 0){
+//             //     printf("EVP_PKEY_keygen_init failed\n");
+//             //     EVP_PKEY_CTX_free(ctx);
+//             //     return false;
+//             // } 
+//             if(EVP_PKEY_CTX_set_ec_paramgen_curve_nid(param_ctx, NID_sm2) <= 0){
+//                 printf("EVP_PKEY_CTX_set_ec_paramgen_curve_nid\n");
+//                 EVP_PKEY_CTX_free(param_ctx);
+//                 return false;
+//             }
+//             if(EVP_PKEY_paramgen(param_ctx, &params) <= 0){
+//                 printf("EVP_PKEY_paramgen\n");
+//                 EVP_PKEY_CTX_free(param_ctx);
+//                 return false;
+//             }
+
+//             //==================密钥生成阶段========================
+//             //生成密钥对
+//             EVP_PKEY_CTX *keygen_ctx = NULL;
+//             keygen_ctx = EVP_PKEY_CTX_new(params, NULL);
+//             if(!keygen_ctx || EVP_PKEY_keygen_init(keygen_ctx) <= 0){
+//                 printf("EVP_PKEY_keygen_init failed\n");
+//                 EVP_PKEY_CTX_free(keygen_ctx);
+//                 return false;
+//             }
+//             if( EVP_PKEY_keygen(keygen_ctx, evp_key_pair) <= 0){
+//                 printf("EVP_PKEY_keygen failed\n");
+//                 EVP_PKEY_CTX_free(keygen_ctx);
+//                 return false;
+//             }
+
+//             // 关键：强制设置密钥类型为SM2
+//             const EC_KEY *ec_key = EVP_PKEY_get0_EC_KEY(*evp_key_pair);
+//             if (!ec_key) {
+//                 printf("EVP_PKEY_get0_EC_KEY failed\n");
+//                 return false;
+            
+//             }
+//             EC_KEY_set_group(ec_key, group);
+//             EVP_PKEY_set_alias_type(*evp_key_pair, EVP_PKEY_SM2);
+
+//             return true; 
+//         }
+//         // other flow:
+//         ec_key_pair = EC_KEY_new_by_curve_name(nid);
+
+//         // Create the new public/private EC key pair. EC_key must have a group
+//         // associated with it before calling this function
+//         if (EC_KEY_generate_key(ec_key_pair) != 1)
+//             break;
+
+//         /*
+//          * Convert EC key to EVP_PKEY
+//          * This function links evp_key_pair to ec_key_pair, so when evp_key_pair is
+//          *  freed, ec_key_pair is freed. We don't want the user to have to manage 2
+//          *  keys, so just return EVP_PKEY and make sure user free's it
+//          */
+//         if (EVP_PKEY_assign_EC_KEY(*evp_key_pair, ec_key_pair) != 1)
+//             break;
+
+//         if (!evp_key_pair)
+//             break;
+
+//         ret = true;
+//     } while (0);
+
+//     return ret;
+// }
 
 /**
  * Description:   Generates a new RSA key pair with salt
