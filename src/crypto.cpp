@@ -307,23 +307,60 @@ bool generate_ecdh_key_pair(EVP_PKEY **evp_key_pair, SEV_EC curve)
         else{
             // SM2 flow:
             //gen sm2 keypair
-            EVP_PKEY_CTX *ctx = EVP_PKEY_CTX_new_id(EVP_PKEY_SM2, NULL);
-            if(!ctx){
-                printf("EVP_PKEY_CTX_new_id failed\n");
+            // EVP_PKEY_CTX *param_ctx = EVP_PKEY_CTX_new_id(EVP_PKEY_SM2, NULL);
+            // EVP_PKEY_CTX *param_ctx = EVP_PKEY_CTX_new_id(NID_sm2, NULL); //这两个宏是一样的EVP_PKEY_SM2 和 NID_sm2
+            EVP_PKEY_CTX *param_ctx = EVP_PKEY_CTX_new_id(EVP_PKEY_EC, NULL);
+            if(!param_ctx){
+                printf("EVP_PKEY_CTX_new_NID_sm2id failed\n");
                 return false;
             }
-                
-            if(EVP_PKEY_keygen_init(ctx) <= 0){
+            
+            // // 设置参数编码方式为命名曲线
+            // if (EVP_PKEY_CTX_ctrl(param_ctx, -1, EVP_PKEY_OP_PARAMGEN,
+            //                     EVP_PKEY_CTRL_EC_PARAM_ENC, OPENSSL_EC_NAMED_CURVE, NULL) <= 0) 
+            // {
+            //     printf("EVP_PKEY_CTRL_EC_PARAM_ENC failed\n");
+            //     EVP_PKEY_CTX_free(param_ctx);
+            //     return false;
+            // }
+            if(EVP_PKEY_paramgen_init(param_ctx) <= 0){
+                printf("EVP_PKEY_paramgen_init failed\n");
+                EVP_PKEY_CTX_free(param_ctx);
+                return false;
+            }
+            if(EVP_PKEY_CTX_set_ec_paramgen_curve_nid(param_ctx, NID_sm2) <= 0){
+                printf("EVP_PKEY_CTX_set_ec_paramgen_curve_nid failed\n");
+                EVP_PKEY_CTX_free(param_ctx);
+                return false;
+            }
+
+            //生成参数
+            EVP_PKEY *params = NULL;
+            if(EVP_PKEY_paramgen(param_ctx, &params) <= 0){
+                printf("EVP_PKEY_paramgen failed\n");
+                EVP_PKEY_CTX_free(param_ctx);
+                return false;
+            }    
+            //基于参数生成密钥
+            EVP_PKEY_CTX *keygen_ctx = EVP_PKEY_CTX_new(params, NULL);
+            if(!keygen_ctx){
+                printf("EVP_PKEY_CTX_new failed\n");
+                EVP_PKEY_CTX_free(param_ctx);
+                return false;
+            }
+
+            if(EVP_PKEY_keygen_init(keygen_ctx) <= 0){
                 printf("EVP_PKEY_keygen_init failed\n");
-                EVP_PKEY_CTX_free(ctx);
+                EVP_PKEY_CTX_free(param_ctx);
                 return false;
             }
-            if(EVP_PKEY_keygen(ctx, evp_key_pair) <= 0){
+
+            if(EVP_PKEY_keygen(keygen_ctx, evp_key_pair) <= 0){
                 printf("EVP_PKEY_keygen failed\n");
-                EVP_PKEY_CTX_free(ctx);
+                EVP_PKEY_CTX_free(param_ctx);
                 return false;
             }
-            EVP_PKEY_CTX_free(ctx);
+            EVP_PKEY_CTX_free(param_ctx);
             return true;
         }
         // other flow:

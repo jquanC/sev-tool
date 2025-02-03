@@ -1359,7 +1359,7 @@ int Command::mh_export_csv_cert_key(void){
     //size_t oca_size; not to check the size at the current;
     sev::write_file(OCA_path,oca_obj.data(),sizeof(sev_cert));
     //1.4 将私钥写道当前路径
-    if(!write_priv_key_pem(oca_priv_key_pem, oca_key_pair)){
+    if(!write_priv_key_pem_csv(oca_priv_key_pem, oca_key_pair)){
         printf("Error writting OCA ECDH privkey pem file\n");
         cmd_ret = ERROR_UNSUPPORTED;
         break;
@@ -1386,7 +1386,7 @@ int Command::mh_export_csv_cert_key(void){
     //2.3 将证书写道当前路径
     sev::write_file(PEK_path, pek_obj.data(), sizeof(sev_cert));
     //2.4 将私钥写道当前路径
-    if(!write_priv_key_pem(pek_priv_key_pem, pek_key_pair)){
+    if(!write_priv_key_pem_csv(pek_priv_key_pem, pek_key_pair)){
         printf("Error writting PEK ECDH privkey pem file\n");
         cmd_ret = ERROR_UNSUPPORTED;
         break;
@@ -1410,10 +1410,10 @@ int Command::mh_export_csv_cert_key(void){
         cmd_ret = ERROR_INVALID_CERTIFICATE;
         break;
     }
-    //3.3 将证书写道当前路径
+    //3.3 将证书写到当前路径
     sev::write_file(PDH_path, pdh_obj.data(), sizeof(sev_cert));
     //3.4 将私钥写道当前路径
-    if(!write_priv_key_pem(pdh_priv_key_pem, pdh_key_pair)){
+    if(!write_priv_key_pem_csv(pdh_priv_key_pem, pdh_key_pair)){
         printf("Error writting PDH ECDH privkey pem file\n");  
         cmd_ret = ERROR_UNSUPPORTED; 
         break;

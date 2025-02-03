@@ -18,6 +18,7 @@
 #include "sevcert.h"
 #include "sevapi.h"
 #include "utilities.h"
+#include <cstddef>
 #include <cstdint>
 #include <openssl/bn.h>
 #include <openssl/ec.h>
@@ -284,6 +285,20 @@ bool write_priv_key_pem(const std::string file_name, EVP_PKEY *evp_key_pair)
     }
     fclose(pFile);
     return true;
+}
+
+bool write_priv_key_pem_csv(const std::string file_name, EVP_PKEY *evp_key_pair)
+{
+    FILE *pFile = NULL;
+    pFile = fopen(file_name.c_str(), "wt");
+    if (!pFile)
+        return false;
+
+    // printf("Writing to file: %s\n", file_name.c_str());
+    int ret = PEM_write_PKCS8PrivateKey(
+        pFile, evp_key_pair, NULL, NULL, 0, NULL, NULL);
+    fclose(pFile);
+    return ret == 1;
 }
 
 /**
