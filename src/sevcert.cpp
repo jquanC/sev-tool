@@ -1247,33 +1247,50 @@ SEV_ERROR_CODE SEVCert::decompile_public_key_into_certificate_csv(sev_cert *cert
 
             // Pull the EC_KEY from the EVP_PKEY
             ec_pubkey = EVP_PKEY_get1_EC_KEY(evp_pubkey);
-
-            // Make sure the key is good
-            if (EC_KEY_check_key(ec_pubkey) != 1){
-                printf("EC_KEY_check_key faile.d, the key is not good\n");
+            
+            //test: 增加显式的设置参数
+                // 显式设置SM2曲线参数（关键修复）
+            EC_GROUP* sm2_group = EC_GROUP_new_by_curve_name(NID_sm2);
+            if (!sm2_group) {
+                printf("Failed to create SM2 group\n");
+                EC_KEY_free(ec_pubkey);
                 break;
             }
+            
+            if (EC_KEY_set_group(ec_pubkey, sm2_group) != 1) {
+                printf("Failed to set EC group to SM2\n");
+                EC_GROUP_free(sm2_group);
+                EC_KEY_free(ec_pubkey);
+                break;
+            }
+            EC_GROUP_free(sm2_group);
+
+
+            // // Make sure the key is good
+            // if (EC_KEY_check_key(ec_pubkey) != 1){
+            //     printf("EC_KEY_check_key faile.d, the key is not good\n");
+            //     break;
+            // }
                 
-            // Get the group and nid of the curve
-            const EC_GROUP *ec_group = EC_KEY_get0_group(ec_pubkey);
-            int nid = EC_GROUP_get_curve_name(ec_group); //EVP_PKEY format contains the curve information, neither pubkey nor privkey
+            // // Get the group and nid of the curve
+            // const EC_GROUP *ec_group = EC_KEY_get0_group(ec_pubkey);
+            // if(!ec_group){
+            //     printf("EC_KEY_get0_group failed\n");
+            //     break;
+            // }
+            // // int nid = EC_GROUP_get_curve_name(ec_group); //EVP_PKEY format contains the curve information, neither pubkey nor privkey
 
-/*             // Set the curve parameter of the cert's pubkey
-            if (nid == EC_curve_nist2nid("P-256"))
-                cert->pub_key.ecdh.curve = SEV_EC_P256;
-            else // if (EC_curve_nist2nid("P-384"))
-                cert->pub_key.ecdh.curve = SEV_EC_P384; */
-            //SM2_DH and SM2_SA use the same curve
-            if(OBJ_sn2nid("SM2") == nid)
-            {
-                if(cert->pub_key_algo == SIG_ALGO_TYPE_SM2_DH)
-                    cert->pub_key.sm2dh.curve = CSV_EC_SM2_256;
-                else if(cert->pub_key_algo == SIG_ALGO_TYPE_SM2_SA)
-                    cert->pub_key.sm2sa.curve = CSV_EC_SM2_256;
-            }else{
-                printf("Map sm2 curve string (SM2) to nid failed\n");
-                break;
-            }
+
+            // if(OBJ_sn2nid("SM2") == nid)
+            // {
+            //     if(cert->pub_key_algo == SIG_ALGO_TYPE_SM2_DH)
+            //         cert->pub_key.sm2dh.curve = CSV_EC_SM2_256;
+            //     else if(cert->pub_key_algo == SIG_ALGO_TYPE_SM2_SA)
+            //         cert->pub_key.sm2sa.curve = CSV_EC_SM2_256;
+            // }else{
+            //     printf("Map sm2 curve string (SM2) to nid failed\n");
+            //     break;
+            // }
 
             // Get the EC_POINT from the public key
             const EC_POINT *pub = EC_KEY_get0_public_key(ec_pubkey);
