@@ -29,6 +29,8 @@
 #include <openssl/objects.h>
 #include <openssl/ts.h>
 #include <openssl/ecdh.h>
+#include <openssl/err.h>
+
 // #include <openssl/core_names.h> // e.g., use EVP_PKEY_assign_EC_KEY
 
 // NIST Compliant KDF
@@ -306,61 +308,33 @@ bool generate_ecdh_key_pair(EVP_PKEY **evp_key_pair, SEV_EC curve)
             nid = EC_curve_nist2nid("P-384");   // NID_secp384r1
         else{
             // SM2 flow:
-            //gen sm2 keypair
-            // EVP_PKEY_CTX *param_ctx = EVP_PKEY_CTX_new_id(EVP_PKEY_SM2, NULL);
-            // EVP_PKEY_CTX *param_ctx = EVP_PKEY_CTX_new_id(NID_sm2, NULL); //这两个宏是一样的EVP_PKEY_SM2 和 NID_sm2
-            EVP_PKEY_CTX *param_ctx = EVP_PKEY_CTX_new_id(EVP_PKEY_EC, NULL);
-            if(!param_ctx){
-                printf("EVP_PKEY_CTX_new_NID_sm2id failed\n");
+            EVP_PKEY_CTX *ctx = EVP_PKEY_CTX_new_id(EVP_PKEY_EC, NULL);
+            if (ctx == NULL) {
+                ERR_print_errors_fp(stderr);
                 return false;
             }
+
+            if (EVP_PKEY_keygen_init(ctx) <= 0) {
+                ERR_print_errors_fp(stderr);
+                EVP_PKEY_CTX_free(ctx);
+                return false;
+            }
+
+            // Set the group name to "sm2" for SM2 keys
+            if (EVP_PKEY_CTX_set_group_name(ctx, "sm2") <= 0) {
+                ERR_print_errors_fp(stderr);
+                EVP_PKEY_CTX_free(ctx);
+                return false;
+            }
+
+            if (EVP_PKEY_keygen(ctx, evp_key_pair) <= 0) {
+                ERR_print_errors_fp(stderr);
+                EVP_PKEY_CTX_free(ctx);
+                return false;
+            }
+
+            EVP_PKEY_CTX_free(ctx);
             
-            // // 设置参数编码方式为命名曲线
-            // if (EVP_PKEY_CTX_ctrl(param_ctx, -1, EVP_PKEY_OP_PARAMGEN,
-            //                     EVP_PKEY_CTRL_EC_PARAM_ENC, OPENSSL_EC_NAMED_CURVE, NULL) <= 0) 
-            // {
-            //     printf("EVP_PKEY_CTRL_EC_PARAM_ENC failed\n");
-            //     EVP_PKEY_CTX_free(param_ctx);
-            //     return false;
-            // }
-            if(EVP_PKEY_paramgen_init(param_ctx) <= 0){
-                printf("EVP_PKEY_paramgen_init failed\n");
-                EVP_PKEY_CTX_free(param_ctx);
-                return false;
-            }
-            if(EVP_PKEY_CTX_set_ec_paramgen_curve_nid(param_ctx, NID_sm2) <= 0){
-                printf("EVP_PKEY_CTX_set_ec_paramgen_curve_nid failed\n");
-                EVP_PKEY_CTX_free(param_ctx);
-                return false;
-            }
-
-            //生成参数
-            EVP_PKEY *params = NULL;
-            if(EVP_PKEY_paramgen(param_ctx, &params) <= 0){
-                printf("EVP_PKEY_paramgen failed\n");
-                EVP_PKEY_CTX_free(param_ctx);
-                return false;
-            }    
-            //基于参数生成密钥
-            EVP_PKEY_CTX *keygen_ctx = EVP_PKEY_CTX_new(params, NULL);
-            if(!keygen_ctx){
-                printf("EVP_PKEY_CTX_new failed\n");
-                EVP_PKEY_CTX_free(param_ctx);
-                return false;
-            }
-
-            if(EVP_PKEY_keygen_init(keygen_ctx) <= 0){
-                printf("EVP_PKEY_keygen_init failed\n");
-                EVP_PKEY_CTX_free(param_ctx);
-                return false;
-            }
-
-            if(EVP_PKEY_keygen(keygen_ctx, evp_key_pair) <= 0){
-                printf("EVP_PKEY_keygen failed\n");
-                EVP_PKEY_CTX_free(param_ctx);
-                return false;
-            }
-            EVP_PKEY_CTX_free(param_ctx);
             return true;
         }
         // other flow:
@@ -388,6 +362,112 @@ bool generate_ecdh_key_pair(EVP_PKEY **evp_key_pair, SEV_EC curve)
 
     return ret;
 }
+
+//bakin 09.02.2025
+// bool generate_ecdh_key_pair(EVP_PKEY **evp_key_pair, SEV_EC curve)
+// {
+//     if (!evp_key_pair)
+//         return false;
+
+//     bool ret = false;
+//     int nid = 0;
+//     EC_KEY *ec_key_pair = NULL;
+
+//     do {
+//         // New up the Guest Owner's private EVP_PKEY
+//         if (!(*evp_key_pair = EVP_PKEY_new()))
+//             break;
+
+//         // New up the EC_KEY with the EC_GROUP
+//         if (curve == SEV_EC_P256)
+//             nid = EC_curve_nist2nid("P-256");   // NID_secp256r1
+//         else if(curve == SEV_EC_P384)
+//             nid = EC_curve_nist2nid("P-384");   // NID_secp384r1
+//         else{
+//             // SM2 flow:
+//             //gen sm2 keypair
+//             // EVP_PKEY_CTX *param_ctx = EVP_PKEY_CTX_new_id(EVP_PKEY_SM2, NULL);
+//             // EVP_PKEY_CTX *param_ctx = EVP_PKEY_CTX_new_id(NID_sm2, NULL); //这两个宏是一样的EVP_PKEY_SM2 和 NID_sm2
+//             /* 如果设置 'EVP_PKEY_EC', 则 EVP_PKEY_CTX_set1_id 会报错*/
+//             EVP_PKEY_CTX *param_ctx = EVP_PKEY_CTX_new_id(EVP_PKEY_EC, NULL);
+//             if(!param_ctx){
+//                 printf("EVP_PKEY_CTX_new_NID_sm2id failed\n");
+//                 return false;
+//             }
+            
+//             // // 设置参数编码方式为命名曲线
+//             // if (EVP_PKEY_CTX_ctrl(param_ctx, -1, EVP_PKEY_OP_PARAMGEN,
+//             //                     EVP_PKEY_CTRL_EC_PARAM_ENC, OPENSSL_EC_NAMED_CURVE, NULL) <= 0) 
+//             // {
+//             //     printf("EVP_PKEY_CTRL_EC_PARAM_ENC failed\n");
+//             //     EVP_PKEY_CTX_free(param_ctx);
+//             //     return false;
+//             // }
+//             if(EVP_PKEY_paramgen_init(param_ctx) <= 0){
+//                 printf("EVP_PKEY_paramgen_init failed\n");
+//                 EVP_PKEY_CTX_free(param_ctx);
+//                 return false;
+//             }
+//             if(EVP_PKEY_CTX_set_ec_paramgen_curve_nid(param_ctx, NID_sm2) <= 0){
+//                 printf("EVP_PKEY_CTX_set_ec_paramgen_curve_nid failed\n");
+//                 EVP_PKEY_CTX_free(param_ctx);
+//                 return false;
+//             }
+
+//             //生成参数
+//             EVP_PKEY *params = NULL;
+//             if(EVP_PKEY_paramgen(param_ctx, &params) <= 0){
+//                 printf("EVP_PKEY_paramgen failed\n");
+//                 EVP_PKEY_CTX_free(param_ctx);
+//                 return false;
+//             }    
+//             //基于参数生成密钥
+//             EVP_PKEY_CTX *keygen_ctx = EVP_PKEY_CTX_new(params, NULL);
+//             if(!keygen_ctx){
+//                 printf("EVP_PKEY_CTX_new failed\n");
+//                 EVP_PKEY_CTX_free(param_ctx);
+//                 return false;
+//             }
+
+//             if(EVP_PKEY_keygen_init(keygen_ctx) <= 0){
+//                 printf("EVP_PKEY_keygen_init failed\n");
+//                 EVP_PKEY_CTX_free(param_ctx);
+//                 return false;
+//             }
+
+//             if(EVP_PKEY_keygen(keygen_ctx, evp_key_pair) <= 0){
+//                 printf("EVP_PKEY_keygen failed\n");
+//                 EVP_PKEY_CTX_free(param_ctx);
+//                 return false;
+//             }
+//             EVP_PKEY_CTX_free(param_ctx);
+//             return true;
+//         }
+//         // other flow:
+//         ec_key_pair = EC_KEY_new_by_curve_name(nid);
+
+//         // Create the new public/private EC key pair. EC_key must have a group
+//         // associated with it before calling this function
+//         if (EC_KEY_generate_key(ec_key_pair) != 1)
+//             break;
+
+//         /*
+//          * Convert EC key to EVP_PKEY
+//          * This function links evp_key_pair to ec_key_pair, so when evp_key_pair is
+//          *  freed, ec_key_pair is freed. We don't want the user to have to manage 2
+//          *  keys, so just return EVP_PKEY and make sure user free's it
+//          */
+//         if (EVP_PKEY_assign_EC_KEY(*evp_key_pair, ec_key_pair) != 1)
+//             break;
+
+//         if (!evp_key_pair)
+//             break;
+
+//         ret = true;
+//     } while (0);
+
+//     return ret;
+// }
 
 // bool generate_ecdh_key_pair(EVP_PKEY **evp_key_pair, SEV_EC curve)
 // {
@@ -854,6 +934,7 @@ static bool ecdsa_sign(sev_sig *sig, EVP_PKEY **priv_evp_key,
 
 /* digest ptr to unhased contend */
 /* 在签名函数中，他们使用了EVP_DigestSign系列函数生成签名，然后将DER格式的签名转换为ECDSA_SIG结构，提取r和s，存储到sig结构体中。验证时，他们又从sig中读取r和s，重新构造ECDSA_SIG，再转换成DER格式进行验证 */
+
 static bool sm2sa_sign(sev_sig *sig, EVP_PKEY **priv_evp_key,
                        const uint8_t *msg, size_t length, const uint8_t * user_id, size_t user_id_len){
     bool is_valid = false;
@@ -875,53 +956,44 @@ static bool sm2sa_sign(sev_sig *sig, EVP_PKEY **priv_evp_key,
         //     break;
         // }
 
-        // create a new EVP_MD_CTX
-        mdctx = EVP_MD_CTX_new();
-        if(!mdctx){
-            printf("Error: EVP_MD_CTX_new failed\n");
-            break;
+        EVP_MD_CTX *md_ctx = EVP_MD_CTX_new();
+        if (md_ctx == NULL) {
+            ERR_print_errors_fp(stderr);
+            return false;
         }
 
-        // start sign process, set sm3 as the digest algorithm
-        const EVP_MD *sm3_md = EVP_sm3();
-        if(!sm3_md){
-            printf("Error: EVP_sm3 failed\n");
-            break;
+        if (EVP_DigestSignInit(md_ctx, NULL, EVP_sm3(), NULL, *priv_evp_key) <= 0) {
+            ERR_print_errors_fp(stderr);
+            EVP_MD_CTX_free(md_ctx);
+            return false;
         }
-        if(EVP_DigestSignInit(mdctx, &pctx, sm3_md, NULL, *priv_evp_key) != 1){
-            printf("Error: EVP_DigestSignInit failed\n");
-            break;
+
+        // 设置用户ID
+        if (EVP_PKEY_CTX_set1_id(EVP_MD_CTX_get_pkey_ctx(md_ctx), user_id, user_id_len) <= 0) {
+            ERR_print_errors_fp(stderr);
+            EVP_MD_CTX_free(md_ctx);
+            return false;
         }
-        // set context
-        if(!pctx){
-            printf("Error: get pctx in EVP_DigestSignInit failed\n");
-            break;
+
+        // 计算签名所需的空间大小
+        if (EVP_DigestSign(md_ctx, NULL, &sig_len, msg, length) <= 0) {
+            ERR_print_errors_fp(stderr);
+            EVP_MD_CTX_free(md_ctx);
+            return false;
         }
-        if(EVP_PKEY_CTX_set1_id(pctx, user_id, user_id_len)!=1){
-            printf("Error: EVP_PKEY_CTX_set1_id failed\n");
-            break;
-        }
-        
-        if(EVP_DigestSignUpdate(mdctx, msg, length) != 1){
-            printf("Error: EVP_DigestSignUpdate failed\n");
-            break;
-        }
-        // get the length of signature
-        if(EVP_DigestSignFinal(mdctx, NULL, &sig_len) != 1){
-            printf("Error: EVP_DigestSignFinal failed\n");
-            break;
-        }
-        // allocate memory for signature
+
+        // 分配空间并计算签名
         signature = (uint8_t *)OPENSSL_malloc(sig_len);
-        if(!signature){
-            printf("Error: OPENSSL_malloc failed\n");
-            break;
+        
+        if (signature == NULL || EVP_DigestSign(md_ctx, signature, &sig_len, msg, length) <= 0) {
+            ERR_print_errors_fp(stderr);
+            OPENSSL_free(signature);
+            signature = NULL;
+            EVP_MD_CTX_free(md_ctx);
+            return false;
         }
-        // store signature in val'signature', in DER format
-        if(EVP_DigestSignFinal(mdctx, signature, &sig_len) != 1){
-            printf("Error: EVP_DigestFinal failed\n");
-            break;
-        }
+
+        EVP_MD_CTX_free(md_ctx);
 
         //trans Der-encoded signature to ECDSA_SIG
         signature_ptr =signature;
@@ -956,6 +1028,110 @@ static bool sm2sa_sign(sev_sig *sig, EVP_PKEY **priv_evp_key,
 
     return is_valid;
 }
+
+//bakin 09.02.2025
+// static bool sm2sa_sign(sev_sig *sig, EVP_PKEY **priv_evp_key,
+//                        const uint8_t *msg, size_t length, const uint8_t * user_id, size_t user_id_len){
+//     bool is_valid = false;
+//     // EC_KEY *priv_ec_key = NULL;
+//     EVP_MD_CTX *mdctx = NULL;
+//     uint8_t *signature = NULL;
+//     uint8_t *signature_ptr = NULL;
+//     EVP_PKEY_CTX *pctx = NULL;
+
+//     const BIGNUM *r = NULL;
+//     const BIGNUM *s = NULL;
+//     ECDSA_SIG *sm2_sig = NULL;
+//     size_t sig_len;
+
+//     do {
+//         // We use id-ecPublicKey, not SM2
+//         // if(EVP_PKEY_id(*priv_evp_key) != EVP_PKEY_SM2){
+//         //     printf("Error: EVP_PKEY_id failed\n");
+//         //     break;
+//         // }
+
+//         // create a new EVP_MD_CTX
+//         mdctx = EVP_MD_CTX_new();
+//         if(!mdctx){
+//             printf("Error: EVP_MD_CTX_new failed\n");
+//             break;
+//         }
+
+//         // start sign process, set sm3 as the digest algorithm
+//         const EVP_MD *sm3_md = EVP_sm3();
+//         if(!sm3_md){
+//             printf("Error: EVP_sm3 failed\n");
+//             break;
+//         }
+//         if(EVP_DigestSignInit(mdctx, &pctx, sm3_md, NULL, *priv_evp_key) != 1){
+//             printf("Error: EVP_DigestSignInit failed\n");
+//             break;
+//         }
+//         // set context
+//         if(!pctx){
+//             printf("Error: get pctx in EVP_DigestSignInit failed\n");
+//             break;
+//         }
+//         if(EVP_PKEY_CTX_set1_id(pctx, user_id, user_id_len)!=1){
+//             printf("Error: EVP_PKEY_CTX_set1_id failed\n");
+//             break;
+//         }
+        
+//         if(EVP_DigestSignUpdate(mdctx, msg, length) != 1){
+//             printf("Error: EVP_DigestSignUpdate failed\n");
+//             break;
+//         }
+//         // get the length of signature
+//         if(EVP_DigestSignFinal(mdctx, NULL, &sig_len) != 1){
+//             printf("Error: EVP_DigestSignFinal failed\n");
+//             break;
+//         }
+//         // allocate memory for signature
+//         signature = (uint8_t *)OPENSSL_malloc(sig_len);
+//         if(!signature){
+//             printf("Error: OPENSSL_malloc failed\n");
+//             break;
+//         }
+//         // store signature in val'signature', in DER format
+//         if(EVP_DigestSignFinal(mdctx, signature, &sig_len) != 1){
+//             printf("Error: EVP_DigestFinal failed\n");
+//             break;
+//         }
+
+//         //trans Der-encoded signature to ECDSA_SIG
+//         signature_ptr =signature;
+//         sm2_sig = d2i_ECDSA_SIG(NULL, (const unsigned char**)&signature_ptr, sig_len);
+//         if(!sm2_sig){
+//             printf("Error: d2i_ECDSA_SIG failed\n");
+//             //避免重复释放
+//             // EVP_MD_CTX_free(mdctx);
+//             // OPENSSL_free(signature); 
+//             break;
+//         }
+//         // Extract the bignums from sm2_sig and store the signature in sig
+//         ECDSA_SIG_get0(sm2_sig, &r, &s);
+//         if (!BN_bn2lebinpad(r, sig->ecdsa.r, sizeof(sig->ecdsa.r)) ||
+//             !BN_bn2lebinpad(s, sig->ecdsa.s, sizeof(sig->ecdsa.s))) {
+//             printf("Error: BN_bn2binpad failed\n");
+//             break;
+//         }
+//         // BN_bn2lebinpad(r, sig->ecdsa.r, sizeof(sev_ecdsa_sig::r));    // BigNum to Binary in Little Endian
+//         // BN_bn2lebinpad(s, sig->ecdsa.s, sizeof(sev_ecdsa_sig::s));
+
+//         is_valid = true;
+//     } while (0);
+
+//     // Free memory
+//     ECDSA_SIG_free(sm2_sig);
+//     OPENSSL_free(signature);//check point: the signaure (r,s) are copied to sig->ecdsa.r and sig->ecdsa.s
+//     EVP_MD_CTX_free(mdctx);
+//     //free mdctx的时候，会释放自动关联的pctx
+//     // EVP_PKEY_CTX_free(pctx);
+//     // EC_KEY_free(priv_ec_key);
+
+//     return is_valid;
+// }
 
 
 /**
