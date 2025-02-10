@@ -1337,12 +1337,14 @@ int Command::mh_export_csv_cert_key(void){
     std::string PEK_path = m_output_folder + "mh_csv_" + PEK_FILENAME;
     std::string pek_priv_key_pem = m_output_folder + "mh_csv_pek_priv_key.pem";
     std::string pek_pub_key_pem = m_output_folder + "mh_csv_pek_pub_key.pem";
-    std::string dup_pek_priv_key_pem = m_output_folder + "dup_mh_csv_pek_priv_key.pem";// not used, wirite dup_oca_priv_pub for analysis is enough
+    std::string dup_pek_priv_key_pem = m_output_folder + "dup_mh_csv_pek_priv_key.pem";
+    std::string dup_pek_pub_key_pem = m_output_folder + "dup_mh_csv_pek_pub_key.pem";
 
     std::string PDH_path = m_output_folder + "mh_csv_" + PDH_FILENAME;
     std::string pdh_priv_key_pem = m_output_folder + "mh_csv_pdh_priv_key.pem";
     std::string pdh_pub_key_pem = m_output_folder + "mh_csv_pdh_pub_key.pem";
-    std::string dup_pdh_priv_key_pem = m_output_folder + "dup_mh_csv_pdh_priv_key.pem"; // not used, wirite dup_oca_priv_pub for analysis is enough
+    std::string dup_pdh_priv_key_pem = m_output_folder + "dup_mh_csv_pdh_priv_key.pem"; 
+    std::string dup_pdh_pub_key_pem = m_output_folder + "dup_mh_csv_pdh_pub_key.pem";
 
     do{
     //1. create and output OCA cert and priv_key    
@@ -1413,13 +1415,13 @@ int Command::mh_export_csv_cert_key(void){
     //2.3 将证书写道当前路径 
     sev::write_file(PEK_path, pek_obj.data(), sizeof(sev_cert));
     //2.4 将私钥写道当前路径(the original one)
-    if(!write_priv_key_pem_csv(pek_priv_key_pem, pek_key_pair)){
+    if(!write_priv_key_pem_csv(dup_pek_priv_key_pem, dup_pek_key_pair)){
         printf("Error writting PEK ECDH privkey pem file\n");
         cmd_ret = ERROR_UNSUPPORTED;
         break;
     }   
     //2.5 将公钥写到当前路径 (pem 文件)
-    if(!write_pub_key_pem(pek_pub_key_pem, pek_key_pair)){
+    if(!write_pub_key_pem(dup_pek_pub_key_pem, dup_pek_key_pair)){
         printf("Error writting PEK ECDH pubkey pem file\n");
         cmd_ret = ERROR_UNSUPPORTED;
         break;
@@ -1442,13 +1444,13 @@ int Command::mh_export_csv_cert_key(void){
     //3.3 将证书写到当前路径 (use the original one)
     sev::write_file(PDH_path, pdh_obj.data(), sizeof(sev_cert));
     //3.4 将私钥写道当前路径
-    if(!write_priv_key_pem_csv(pdh_priv_key_pem, pdh_key_pair)){
+    if(!write_priv_key_pem_csv(dup_pdh_priv_key_pem, dup_pdh_key_pair)){
         printf("Error writting PDH ECDH privkey pem file\n");  
         cmd_ret = ERROR_UNSUPPORTED; 
         break;
     }
     //3.5 将公钥写到当前路径 (pem 文件)
-    if(!write_pub_key_pem(pdh_pub_key_pem, pdh_key_pair)){
+    if(!write_pub_key_pem(dup_pdh_pub_key_pem, dup_pdh_key_pair)){
         printf("Error writting PDH ECDH pubkey pem file\n");
         cmd_ret = ERROR_UNSUPPORTED;
         break;
