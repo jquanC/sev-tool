@@ -118,8 +118,11 @@ bool verify_message(sev_sig *sig, EVP_PKEY **evp_key_pair, const uint8_t *msg,
                     size_t length, const SEV_SIG_ALGO algo);
 bool verify_message_csv(sev_sig *sig, EVP_PKEY **evp_key_pair, const uint8_t *msg,
                     size_t length, const uint8_t * user_id, size_t user_id_len, const SEV_SIG_ALGO algo);
-static bool sm2sa_sign(sev_sig *sig, EVP_PKEY **priv_evp_key,
-                       const uint8_t *msg, size_t length, const uint8_t * user_id, size_t user_id_len);
+EVP_PKEY *adjust_sm2_key(const EVP_PKEY *ori_priv_evp_key);
+
+// sm2sa_sign 不需要被外部使用
+// bool sm2sa_sign(sev_sig *sig, EVP_PKEY **priv_evp_key,
+//                        const uint8_t *msg, size_t length, const uint8_t * user_id, size_t user_id_len);
 bool sm2sa_verify(sev_sig *sig, EVP_PKEY **pub_evp_key, const uint8_t *msg, size_t length, const uint8_t *user_id, size_t user_id_len);
 
 SEV_ERROR_CODE aes_256_gcm_authenticated_encrypt(const uint8_t *p_key, size_t key_size,

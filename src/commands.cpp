@@ -1331,12 +1331,18 @@ int Command::mh_export_csv_cert_key(void){
     std::string OCA_path = m_output_folder + "mh_csv_" + OCA_FILENAME;
     std::string oca_priv_key_pem = m_output_folder + "mh_csv_oca_priv_key.pem";
     std::string oca_pub_key_pem = m_output_folder + "mh_csv_oca_pub_key.pem";
+    std::string dup_oca_priv_key_pem = m_output_folder + "dup_mh_csv_oca_priv_key.pem";
+    std::string dup_oca_pub_key_pem = m_output_folder + "dup_mh_csv_oca_pub_key.pem";
+   
     std::string PEK_path = m_output_folder + "mh_csv_" + PEK_FILENAME;
     std::string pek_priv_key_pem = m_output_folder + "mh_csv_pek_priv_key.pem";
     std::string pek_pub_key_pem = m_output_folder + "mh_csv_pek_pub_key.pem";
+    std::string dup_pek_priv_key_pem = m_output_folder + "dup_mh_csv_pek_priv_key.pem";// not used, wirite dup_oca_priv_pub for analysis is enough
+
     std::string PDH_path = m_output_folder + "mh_csv_" + PDH_FILENAME;
     std::string pdh_priv_key_pem = m_output_folder + "mh_csv_pdh_priv_key.pem";
     std::string pdh_pub_key_pem = m_output_folder + "mh_csv_pdh_pub_key.pem";
+    std::string dup_pdh_priv_key_pem = m_output_folder + "dup_mh_csv_pdh_priv_key.pem"; // not used, wirite dup_oca_priv_pub for analysis is enough
 
     do{
     //1. create and output OCA cert and priv_key    
@@ -1349,15 +1355,21 @@ int Command::mh_export_csv_cert_key(void){
         cmd_ret = ERROR_UNSUPPORTED;
         break;
     }
-        //For debugging, we ouptput the key to disk in advance (to-do: remove in future)
+        EVP_PKEY * dup_oca_key_pair = adjust_sm2_key(oca_key_pair);
+        //For debugging, we ouptput the key to disk in advance (to-do:remove in future)
         if(!write_priv_key_pem_csv(oca_priv_key_pem, oca_key_pair)){
         printf("Error writting OCA ECDH privkey pem file\n");
         cmd_ret = ERROR_UNSUPPORTED;
         break;
         }
+        if(!write_priv_key_pem_csv(dup_oca_priv_key_pem, dup_oca_key_pair)){
+        printf("Error writting dup OCA ECDH privkey pem file\n");
+        cmd_ret = ERROR_UNSUPPORTED;
+        break;
+        }
 
     //1.2 create OCA cert
-    if(!oca_obj.create_oca_cert_csv(&oca_key_pair, SIG_ALGO_TYPE_SM2_SA)){
+    if(!oca_obj.create_oca_cert_csv(&dup_oca_key_pair, SIG_ALGO_TYPE_SM2_SA)){
         printf("Error creating OCA certificate\n");
         cmd_ret = ERROR_INVALID_CERTIFICATE;
         break;
@@ -1378,6 +1390,12 @@ int Command::mh_export_csv_cert_key(void){
         cmd_ret = ERROR_UNSUPPORTED;
         break;
     }
+    //also write dup_oca_pub_key_pem for analysis
+    if(!write_pub_key_pem(dup_oca_pub_key_pem, dup_oca_key_pair)){
+        printf("Error writting dup OCA ECDH pubkey pem file\n");
+        cmd_ret = ERROR_UNSUPPORTED;
+        break;
+    }
     //2. create and output PEK cert and priv_key
     //2.1 create PEK keypair
     if(!generate_ecdh_key_pair(&pek_key_pair,CSV_EC_SM2_256)){
@@ -1385,15 +1403,16 @@ int Command::mh_export_csv_cert_key(void){
         cmd_ret = ERROR_UNSUPPORTED;
         break;
     }
-    //2.2 create pek cert
-    if(!pek_obj.create_pek_cert_csv(&pek_key_pair, &oca_key_pair,0x1,0x2, SIG_ALGO_TYPE_SM2_SA)){
+    EVP_PKEY * dup_pek_key_pair = adjust_sm2_key(pek_key_pair);
+    //2.2 create pek cert; use dup_pek (sm2::sm2 format)
+    if(!pek_obj.create_pek_cert_csv(&dup_pek_key_pair, &dup_oca_key_pair,0x1,0x2, SIG_ALGO_TYPE_SM2_SA)){
         printf("Error creating PEK certificate\n");
         cmd_ret = ERROR_INVALID_CERTIFICATE;
         break;
     }
-    //2.3 将证书写道当前路径
+    //2.3 将证书写道当前路径 
     sev::write_file(PEK_path, pek_obj.data(), sizeof(sev_cert));
-    //2.4 将私钥写道当前路径
+    //2.4 将私钥写道当前路径(the original one)
     if(!write_priv_key_pem_csv(pek_priv_key_pem, pek_key_pair)){
         printf("Error writting PEK ECDH privkey pem file\n");
         cmd_ret = ERROR_UNSUPPORTED;
@@ -1412,13 +1431,15 @@ int Command::mh_export_csv_cert_key(void){
         cmd_ret = ERROR_UNSUPPORTED;
         break;
     }
-    //3.2 create pdh cert
-    if(!pdh_obj.create_pdh_cert_csv(&pdh_key_pair, &pek_key_pair,0x1,0x2)){
+    EVP_PKEY * dup_pdh_key_pair = adjust_sm2_key(pdh_key_pair);
+
+    //3.2 create pdh cert (use the dup one)
+    if(!pdh_obj.create_pdh_cert_csv(&dup_pdh_key_pair, &dup_pek_key_pair,0x1,0x2)){
         printf("Error creating PDH certificate\n");
         cmd_ret = ERROR_INVALID_CERTIFICATE;
         break;
     }
-    //3.3 将证书写到当前路径
+    //3.3 将证书写到当前路径 (use the original one)
     sev::write_file(PDH_path, pdh_obj.data(), sizeof(sev_cert));
     //3.4 将私钥写道当前路径
     if(!write_priv_key_pem_csv(pdh_priv_key_pem, pdh_key_pair)){

@@ -931,6 +931,62 @@ static bool ecdsa_sign(sev_sig *sig, EVP_PKEY **priv_evp_key,
     return is_valid;
 }
 
+EVP_PKEY *adjust_sm2_key(const EVP_PKEY *ori_priv_evp_key) {
+    if (!ori_priv_evp_key || EVP_PKEY_base_id(ori_priv_evp_key) != EVP_PKEY_SM2) {
+        fprintf(stderr, "Invalid input: EVP_PKEY is NULL or not an SM2 key.\n");
+        return NULL;
+    }
+
+    EVP_PKEY *new_evp_key = NULL;
+    //typedef struct ec_key_st EC_KEY;
+    // EC_KEY *ecc_key = (EC_KEY*)EVP_PKEY_get0_EC_KEY(ori_priv_evp_key);
+    const EC_KEY *ecc_key_const = EVP_PKEY_get0_EC_KEY(ori_priv_evp_key);
+    if (!ecc_key_const) {
+        fprintf(stderr, "Failed to extract EC_KEY from EVP_PKEY.\n");
+        return NULL;
+    }
+    EC_KEY *ecc_key_copy = EC_KEY_dup(ecc_key_const);
+
+    // 提取私钥和公钥
+    const BIGNUM *priv_key = EC_KEY_get0_private_key(ecc_key_copy);
+    const EC_POINT *pub_key = EC_KEY_get0_public_key(ecc_key_copy);
+
+    if (!priv_key || !pub_key) {
+        fprintf(stderr, "Failed to extract private or public key from EC_KEY.\n");
+        return NULL;
+    }
+
+    // 创建新的 EC_KEY
+    EC_KEY *new_ec_key = EC_KEY_new_by_curve_name(NID_sm2);
+    if (!new_ec_key) {
+        fprintf(stderr, "Failed to create new EC_KEY for SM2.\n");
+        return NULL;
+    }
+
+    // 设置私钥和公钥
+    if (EC_KEY_set_private_key(new_ec_key, priv_key) != 1 ||
+        EC_KEY_set_public_key(new_ec_key, pub_key) != 1) {
+        fprintf(stderr, "Failed to set private or public key for new EC_KEY.\n");
+        EC_KEY_free(new_ec_key);
+        return NULL;
+    }
+
+    // 创建新的 EVP_PKEY
+    new_evp_key = EVP_PKEY_new();
+    if (!new_evp_key || EVP_PKEY_assign_EC_KEY(new_evp_key, new_ec_key) != 1) {
+        fprintf(stderr, "Failed to create or assign new EVP_PKEY.\n");
+        EC_KEY_free(new_ec_key);
+        if (new_evp_key) EVP_PKEY_free(new_evp_key);
+        return NULL;
+    }
+
+    /**
+     * OpenSSL 3.x 会默认附加 `ASN1_OID`，无需手动处理。
+     * 如果需要低级修改，可以通过 OpenSSL 的 `ASN1` 构造器实现。
+     */
+
+    return new_evp_key;
+}
 
 /* digest ptr to unhased contend */
 /* 在签名函数中，他们使用了EVP_DigestSign系列函数生成签名，然后将DER格式的签名转换为ECDSA_SIG结构，提取r和s，存储到sig结构体中。验证时，他们又从sig中读取r和s，重新构造ECDSA_SIG，再转换成DER格式进行验证 */
