@@ -932,8 +932,12 @@ static bool ecdsa_sign(sev_sig *sig, EVP_PKEY **priv_evp_key,
 }
 
 EVP_PKEY *adjust_sm2_key(const EVP_PKEY *ori_priv_evp_key) {
-    if (!ori_priv_evp_key || EVP_PKEY_base_id(ori_priv_evp_key) != EVP_PKEY_SM2) {
-        fprintf(stderr, "Invalid input: EVP_PKEY is NULL or not an SM2 key.\n");
+    // if (!ori_priv_evp_key || EVP_PKEY_base_id(ori_priv_evp_key) != EVP_PKEY_SM2) {
+    //     fprintf(stderr, "Invalid input: EVP_PKEY is NULL or not an SM2 key.\n");
+    //     return NULL;
+    // }
+    if (!ori_priv_evp_key ) {
+        fprintf(stderr, "Invalid input: EVP_PKEY is NULL\n");
         return NULL;
     }
 
