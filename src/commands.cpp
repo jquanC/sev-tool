@@ -1349,6 +1349,13 @@ int Command::mh_export_csv_cert_key(void){
         cmd_ret = ERROR_UNSUPPORTED;
         break;
     }
+        //For debugging, we ouptput the key to disk in advance (to-do: remove in future)
+        if(!write_priv_key_pem_csv(oca_priv_key_pem, oca_key_pair)){
+        printf("Error writting OCA ECDH privkey pem file\n");
+        cmd_ret = ERROR_UNSUPPORTED;
+        break;
+        }
+
     //1.2 create OCA cert
     if(!oca_obj.create_oca_cert_csv(&oca_key_pair, SIG_ALGO_TYPE_SM2_SA)){
         printf("Error creating OCA certificate\n");
@@ -1358,12 +1365,13 @@ int Command::mh_export_csv_cert_key(void){
     //1.3 将证书写道当前路径
     //size_t oca_size; not to check the size at the current;
     sev::write_file(OCA_path,oca_obj.data(),sizeof(sev_cert));
+
     //1.4 将私钥写道当前路径
-    if(!write_priv_key_pem_csv(oca_priv_key_pem, oca_key_pair)){
-        printf("Error writting OCA ECDH privkey pem file\n");
-        cmd_ret = ERROR_UNSUPPORTED;
-        break;
-    }
+    // if(!write_priv_key_pem_csv(oca_priv_key_pem, oca_key_pair)){
+    //     printf("Error writting OCA ECDH privkey pem file\n");
+    //     cmd_ret = ERROR_UNSUPPORTED;
+    //     break;
+    // }
     //1.5 将公钥写到当前路径 (pem 文件)
     if(!write_pub_key_pem(oca_pub_key_pem, oca_key_pair)){
         printf("Error writting OCA ECDH pubkey pem file\n");

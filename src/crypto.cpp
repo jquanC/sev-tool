@@ -958,11 +958,13 @@ static bool sm2sa_sign(sev_sig *sig, EVP_PKEY **priv_evp_key,
 
         EVP_MD_CTX *md_ctx = EVP_MD_CTX_new();
         if (md_ctx == NULL) {
+            printf("Error: EVP_MD_CTX_new failed\n");
             ERR_print_errors_fp(stderr);
             return false;
         }
 
         if (EVP_DigestSignInit(md_ctx, NULL, EVP_sm3(), NULL, *priv_evp_key) <= 0) {
+            printf("Error: EVP_DigestSignInit failed\n");
             ERR_print_errors_fp(stderr);
             EVP_MD_CTX_free(md_ctx);
             return false;
@@ -970,6 +972,7 @@ static bool sm2sa_sign(sev_sig *sig, EVP_PKEY **priv_evp_key,
 
         // 设置用户ID
         if (EVP_PKEY_CTX_set1_id(EVP_MD_CTX_get_pkey_ctx(md_ctx), user_id, user_id_len) <= 0) {
+            printf("Error: EVP_PKEY_CTX_set1_id failed\n");
             ERR_print_errors_fp(stderr);
             EVP_MD_CTX_free(md_ctx);
             return false;
@@ -977,6 +980,7 @@ static bool sm2sa_sign(sev_sig *sig, EVP_PKEY **priv_evp_key,
 
         // 计算签名所需的空间大小
         if (EVP_DigestSign(md_ctx, NULL, &sig_len, msg, length) <= 0) {
+            printf("Error: EVP_DigestSign failed\n");
             ERR_print_errors_fp(stderr);
             EVP_MD_CTX_free(md_ctx);
             return false;
@@ -986,13 +990,14 @@ static bool sm2sa_sign(sev_sig *sig, EVP_PKEY **priv_evp_key,
         signature = (uint8_t *)OPENSSL_malloc(sig_len);
         
         if (signature == NULL || EVP_DigestSign(md_ctx, signature, &sig_len, msg, length) <= 0) {
+            printf("Error: EVP_DigestSign failed\n");
             ERR_print_errors_fp(stderr);
             OPENSSL_free(signature);
             signature = NULL;
             EVP_MD_CTX_free(md_ctx);
             return false;
         }
-
+        printf("Generate signature successfully\n");
         EVP_MD_CTX_free(md_ctx);
 
         //trans Der-encoded signature to ECDSA_SIG
@@ -1014,7 +1019,8 @@ static bool sm2sa_sign(sev_sig *sig, EVP_PKEY **priv_evp_key,
         }
         // BN_bn2lebinpad(r, sig->ecdsa.r, sizeof(sev_ecdsa_sig::r));    // BigNum to Binary in Little Endian
         // BN_bn2lebinpad(s, sig->ecdsa.s, sizeof(sev_ecdsa_sig::s));
-
+        
+        printf("Genetete cert signature successfully\n");
         is_valid = true;
     } while (0);
 
