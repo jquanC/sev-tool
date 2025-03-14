@@ -1037,6 +1037,7 @@ static bool sm2sa_sign(sev_sig *sig, EVP_PKEY **priv_evp_key,
         }
 
         // 设置用户ID
+        /* The EVP_PKEY_CTX_set1_id() sets an ID pointed by id with the length id_len to the library. The library takes a copy of the id so that the caller can safely free the original memory pointed to by id. */
         if (EVP_PKEY_CTX_set1_id(EVP_MD_CTX_get_pkey_ctx(md_ctx), user_id, user_id_len) <= 0) {
             printf("Error: EVP_PKEY_CTX_set1_id failed\n");
             ERR_print_errors_fp(stderr);
@@ -1443,7 +1444,7 @@ static bool sign_verify_message_csv(sev_sig *sig, EVP_PKEY **evp_key_pair, const
         if(algo == SIG_ALGO_TYPE_SM2_SA){
             if(sign && !sm2sa_sign(sig, evp_key_pair, msg, length,user_id,user_id_len))
                 break;
-            if(!sm2sa_verify(sig, evp_key_pair, msg, length,user_id,user_id_len)) //sm2sa_verify 还没实现
+            if(!sm2sa_verify(sig, evp_key_pair, msg, length,user_id,user_id_len)) 
                 break;
         }
         else {
