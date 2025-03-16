@@ -704,17 +704,21 @@ bool SEVCert::sign_with_key(uint32_t version, uint32_t pub_key_usage,
             //process user_id here
             //obtain the length
             size_t cert_userid_len = (size_t)m_child_cert->pub_key.sm2dh.user_id[0] | ((size_t)m_child_cert->pub_key.sm2dh.user_id[1]<<8);
+
+            cert_userid_len+=2;
             printf("this_cert_userid_len: %zu\n",cert_userid_len);
 
-            return sign_message_csv(&m_child_cert->sig_1, priv_evp_key, (uint8_t *)m_child_cert, pub_key_offset, m_child_cert->pub_key.sm2dh.user_id+2, cert_userid_len,sig_1_algo);
+            return sign_message_csv(&m_child_cert->sig_1, priv_evp_key, (uint8_t *)m_child_cert, pub_key_offset, m_child_cert->pub_key.sm2dh.user_id, cert_userid_len,sig_1_algo);
 
         }else{ 
              //pub_key_usage == SIG_ALGO_TYPE_SM2_SA
              //process user_id here
             //obtain the length
             size_t cert_userid_len = (size_t)m_child_cert->pub_key.sm2sa.user_id[0] | ((size_t)m_child_cert->pub_key.sm2sa.user_id[1]<<8);
+
+            cert_userid_len +=2;
             printf("this_cert_userid_len: %zu\n",cert_userid_len);
-            return sign_message_csv(&m_child_cert->sig_1, priv_evp_key, (uint8_t *)m_child_cert, pub_key_offset, m_child_cert->pub_key.sm2sa.user_id+2, cert_userid_len,sig_1_algo);
+            return sign_message_csv(&m_child_cert->sig_1, priv_evp_key, (uint8_t *)m_child_cert, pub_key_offset, m_child_cert->pub_key.sm2sa.user_id, cert_userid_len,sig_1_algo);
 
         }
         
@@ -965,9 +969,11 @@ SEV_ERROR_CODE SEVCert::validate_signature(const sev_cert *child_cert,
                     //process user_id here
                     //obtain the length
                     size_t cert_userid_len = (size_t)child_cert->pub_key.sm2dh.user_id[0] | ((size_t)child_cert->pub_key.sm2dh.user_id[1]<<8);
+
+                    cert_userid_len+=2;
                     printf("this_cert_userid_len: %zu\n",cert_userid_len);
 
-                    if(!sm2sa_verify(&tsev_sig, &parent_signing_key,(uint8_t *)child_cert,pub_key_offset,child_cert->pub_key.sm2dh.user_id+2,cert_userid_len) )
+                    if(!sm2sa_verify(&tsev_sig, &parent_signing_key,(uint8_t *)child_cert,pub_key_offset,child_cert->pub_key.sm2dh.user_id,cert_userid_len) )
                     {
                     continue;
                     }
@@ -976,9 +982,11 @@ SEV_ERROR_CODE SEVCert::validate_signature(const sev_cert *child_cert,
                     //process user_id here
                     //obtain the length
                     size_t cert_userid_len = (size_t)child_cert->pub_key.sm2sa.user_id[0] | ((size_t)child_cert->pub_key.sm2sa.user_id[1]<<8);
+
+                    cert_userid_len+=2;
                     printf("this_cert_userid_len: %zu\n",cert_userid_len);
 
-                    if(!sm2sa_verify(&tsev_sig, &parent_signing_key,(uint8_t *)child_cert,pub_key_offset,child_cert->pub_key.sm2sa.user_id+2,cert_userid_len)){
+                    if(!sm2sa_verify(&tsev_sig, &parent_signing_key,(uint8_t *)child_cert,pub_key_offset,child_cert->pub_key.sm2sa.user_id,cert_userid_len)){
                     continue;
                     }
                 }
