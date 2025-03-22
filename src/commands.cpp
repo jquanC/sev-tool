@@ -1312,7 +1312,32 @@ int Command::mh_export_cert_key(void){
     return cmd_ret;
 }
 
-int Command::mh_export_csv_cert_key(void){
+int Command:: mh_export_csv_cert_key(bool flag,std::string oca_priv_key_file,std::string pek_priv_key_file,std::string pdh_priv_key_file){
+
+    if(flag && (oca_priv_key_file == "" ||pek_priv_key_file == ""||pdh_priv_key_file == "")){
+        printf("Error: the private key file path is not valid\n");
+        return ERROR_INVALID_CERTIFICATE;
+    }
+    // Read in the oca_cert
+    EVP_PKEY *oca_priv_key = NULL;
+    EVP_PKEY *pek_priv_key = NULL;
+    EVP_PKEY *pdh_priv_key = NULL;
+    //flag = true: use the input private key file
+    if(flag){
+        if(!read_priv_key_pem_into_evpkey(oca_priv_key_file, &oca_priv_key)){
+            printf("Error reading in the oca private key file\n");
+            return ERROR_INVALID_CERTIFICATE;
+        }
+        if(!read_priv_key_pem_into_evpkey(pek_priv_key_file, &pek_priv_key)){
+            printf("Error reading in the pek private key file\n");
+            return ERROR_INVALID_CERTIFICATE;
+        }
+        if(!read_priv_key_pem_into_evpkey(pdh_priv_key_file, &pdh_priv_key)){
+            printf("Error reading in the pdh private key file\n");
+            return ERROR_INVALID_CERTIFICATE;
+        }
+    }
+    
     //SevCert objs
     sev_cert dummy_pdh;
     sev_cert dummy_pek;
@@ -1352,23 +1377,26 @@ int Command::mh_export_csv_cert_key(void){
     //oca isself-signed;
     //1.1 create OCA keypait
     //bool generate_ecdh_key_pair(EVP_PKEY **evp_key_pair, SEV_EC curve = SEV_EC_P384);---》set second parameter apparently
-    if(!generate_ecdh_key_pair(&oca_key_pair,CSV_EC_SM2_256)){
-        printf("Error generating new OCA ECDH keypair\n");
-        cmd_ret = ERROR_UNSUPPORTED;
-        break;
-    }
-        EVP_PKEY * dup_oca_key_pair = adjust_sm2_key(oca_key_pair);
+    EVP_PKEY * dup_oca_key_pair = NULL;
+    if(flag){
+        //we read oca_priv_key directly from the file
+        dup_oca_key_pair = adjust_sm2_key(oca_priv_key);
+                
+    }else{ // The original flow
+        if(!generate_ecdh_key_pair(&oca_key_pair,CSV_EC_SM2_256)){
+            printf("Error generating new OCA ECDH keypair\n");
+            cmd_ret = ERROR_UNSUPPORTED;
+            break;
+        }
+        dup_oca_key_pair = adjust_sm2_key(oca_key_pair);
         //For debugging, we ouptput the key to disk in advance (to-do:remove in future)
-        if(!write_priv_key_pem_csv(oca_priv_key_pem, oca_key_pair)){
-        printf("Error writting OCA ECDH privkey pem file\n");
-        cmd_ret = ERROR_UNSUPPORTED;
-        break;
-        }
-        if(!write_priv_key_pem_csv(dup_oca_priv_key_pem, dup_oca_key_pair)){
-        printf("Error writting dup OCA ECDH privkey pem file\n");
-        cmd_ret = ERROR_UNSUPPORTED;
-        break;
-        }
+        // if(!write_priv_key_pem_csv(oca_priv_key_pem, oca_key_pair)){
+        //     printf("Error writting OCA ECDH privkey pem file\n");
+        //     cmd_ret = ERROR_UNSUPPORTED;
+        //     break;
+        // }  
+    }
+        
 
     //1.2 create OCA cert
     if(!oca_obj.create_oca_cert_csv(&dup_oca_key_pair, SIG_ALGO_TYPE_SM2_SA)){
@@ -1386,26 +1414,51 @@ int Command::mh_export_csv_cert_key(void){
     //     cmd_ret = ERROR_UNSUPPORTED;
     //     break;
     // }
-    //1.5 将公钥写到当前路径 (pem 文件)
-    if(!write_pub_key_pem(oca_pub_key_pem, oca_key_pair)){
-        printf("Error writting OCA ECDH pubkey pem file\n");
-        cmd_ret = ERROR_UNSUPPORTED;
-        break;
+    if(!write_priv_key_pem_csv(dup_oca_priv_key_pem, dup_oca_key_pair)){
+            printf("Error writting dup OCA ECDH privkey pem file\n");
+            cmd_ret = ERROR_UNSUPPORTED;
+            break;
     }
+    //1.5 将公钥写到当前路径 (pem 文件)
+    // if(flag){
+    //         if(!write_pub_key_pem(oca_pub_key_pem, oca_priv_key)){ // replaced with oca_priv_key
+    //         printf("Error writting OCA ECDH pubkey pem file\n");
+    //         cmd_ret = ERROR_UNSUPPORTED;
+    //         break;
+    //         }
+    // }else{
+    //         // The original way
+    //         if(!write_pub_key_pem(oca_pub_key_pem, oca_key_pair)){
+    //         printf("Error writting OCA ECDH pubkey pem file\n");
+    //         cmd_ret = ERROR_UNSUPPORTED;
+    //         break;
+    //         }
+    // }
+
     //also write dup_oca_pub_key_pem for analysis
     if(!write_pub_key_pem(dup_oca_pub_key_pem, dup_oca_key_pair)){
         printf("Error writting dup OCA ECDH pubkey pem file\n");
         cmd_ret = ERROR_UNSUPPORTED;
         break;
     }
+    
     //2. create and output PEK cert and priv_key
     //2.1 create PEK keypair
-    if(!generate_ecdh_key_pair(&pek_key_pair,CSV_EC_SM2_256)){
+    EVP_PKEY * dup_pek_key_pair = NULL;
+    if(flag){
+        //we read oca_priv_key directly from the file
+        dup_pek_key_pair = adjust_sm2_key(pek_priv_key);       
+
+    }else{
+        if(!generate_ecdh_key_pair(&pek_key_pair,CSV_EC_SM2_256)){
         printf("Error generating new PEK ECDH keypair\n");
         cmd_ret = ERROR_UNSUPPORTED;
         break;
+        }
+        dup_pek_key_pair = adjust_sm2_key(pek_key_pair);
+
     }
-    EVP_PKEY * dup_pek_key_pair = adjust_sm2_key(pek_key_pair);
+    
     //2.2 create pek cert; use dup_pek (sm2::sm2 format)
     if(!pek_obj.create_pek_cert_csv(&dup_pek_key_pair, &dup_oca_key_pair,0x1,0x2, SIG_ALGO_TYPE_SM2_SA)){
         printf("Error creating PEK certificate\n");
@@ -1428,13 +1481,18 @@ int Command::mh_export_csv_cert_key(void){
     }
     //3. create and output PDH cert and priv_key
     //3.1 create ecdh keypair
-    if(!generate_ecdh_key_pair(&pdh_key_pair,CSV_EC_SM2_256)){
+    EVP_PKEY * dup_pdh_key_pair = NULL;
+    if(flag){
+        dup_pdh_key_pair = adjust_sm2_key(pdh_priv_key);
+    }else{
+        if(!generate_ecdh_key_pair(&pdh_key_pair,CSV_EC_SM2_256)){
         printf("Error generating new PDH ECDH keypair\n");
         cmd_ret = ERROR_UNSUPPORTED;
         break;
+        }
+        dup_pdh_key_pair = adjust_sm2_key(pdh_key_pair);
     }
-    EVP_PKEY * dup_pdh_key_pair = adjust_sm2_key(pdh_key_pair);
-
+    
     //3.2 create pdh cert (use the dup one)
     if(!pdh_obj.create_pdh_cert_csv(&dup_pdh_key_pair, &dup_pek_key_pair,0x1,0x2)){
         printf("Error creating PDH certificate\n");
@@ -1443,7 +1501,7 @@ int Command::mh_export_csv_cert_key(void){
     }
     //3.3 将证书写到当前路径 (use the original one)
     sev::write_file(PDH_path, pdh_obj.data(), sizeof(sev_cert));
-    //3.4 将私钥写道当前路径
+    //3.4 将私钥写到当前路径
     if(!write_priv_key_pem_csv(dup_pdh_priv_key_pem, dup_pdh_key_pair)){
         printf("Error writting PDH ECDH privkey pem file\n");  
         cmd_ret = ERROR_UNSUPPORTED; 

@@ -159,7 +159,7 @@ public:
     int validate_guest_report(void);
     int validate_cert_chain_vcek(void);
     int mh_export_cert_key(void);
-    int mh_export_csv_cert_key(void);
+    int mh_export_csv_cert_key(bool flag,std::string oca_priv_key_file,std::string pek_priv_key_file,std::string pdh_priv_key_file);
 };
 
 #endif /* COMMANDS_H */

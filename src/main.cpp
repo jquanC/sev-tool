@@ -17,6 +17,7 @@
 #include "commands.h"  // has measurement_t
 #include "tests.h"     // for test_all
 #include "utilities.h" // for str_to_array
+#include <bits/getopt_core.h>
 #include <getopt.h>    // for getopt_long
 #include <stdio.h>
 #include <string>
@@ -324,8 +325,33 @@ int main(int argc, char **argv)
                 break;
             }
             case 'N': {         // jquan: add new command for migration helper
+                bool flag = false; // not need to gen new keys
+                // optind--;
+                printf("argc = %d, optind = %d\n", argc, optind);
+                printf("argv[0] = %s\n", argv[0]);
+                printf("argv[1] = %s\n", argv[1]);
+                printf("argv[2] = %s\n", argv[2]);
+                printf("argv[3] = %s\n", argv[3]);
+                if(argc - optind !=3 && argc-optind!=0 ){
+                    printf("Error: Expecting exactly 0 args or 3 args for mh_csv_cert_key_gen\n");
+                    break;
+                }
+                std::string oca_cert_file = "";
+                std::string pek_cert_file = "";
+                std::string pdh_cert_file = "";
+                if(argc - optind == 3) {
+                    printf("flag = true, use input 3 privkey files\n");
+                    flag = true; // generate the all new oca / pek/ pdh key
+                    oca_cert_file = argv[optind++];
+                    printf("oca_cert_file = %s\n",oca_cert_file.c_str());
+                    pek_cert_file = argv[optind++];
+                    printf("pek_cert_file = %s\n",pek_cert_file.c_str());
+                    pdh_cert_file = argv[optind++];
+                    printf("pdh_cert_file = %s\n",pdh_cert_file.c_str());
+                }
+
                 Command cmd(output_folder, verbose_flag, CCP_NOT_REQ);
-                cmd_ret = cmd.mh_export_csv_cert_key();
+                cmd_ret = cmd.mh_export_csv_cert_key(flag,oca_cert_file,pek_cert_file,pdh_cert_file);
                 break;
             }
             case 'T': {         // Run Tests

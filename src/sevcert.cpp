@@ -673,6 +673,22 @@ bool SEVCert::create_oca_cert_csv(EVP_PKEY **oca_key_pair, SEV_SIG_ALGO algo)
  * and all other params later (don't know what other params it needed to validate
  * correctly)
  */
+
+void print_bytes_arr(uint8_t* arr, size_t len){
+    for(int i=0;i < len;i++){
+            if(i % 16 == 0){
+                printf("%08x:",i);
+            }
+            printf("%02x", arr[i]);
+            if((i+1)%16 == 0 || i == len - 1){
+                printf("\n");
+            }else{
+                printf(" ");
+            }
+        }
+    printf("\n");
+}
+
 bool SEVCert::sign_with_key(uint32_t version, uint32_t pub_key_usage,
                             uint32_t pub_key_algo, EVP_PKEY **priv_evp_key,
                             uint32_t sig_1_usage, SEV_SIG_ALGO sig_1_algo)
@@ -705,13 +721,16 @@ bool SEVCert::sign_with_key(uint32_t version, uint32_t pub_key_usage,
             //obtain the length
             size_t cert_userid_len = (size_t)m_child_cert->pub_key.sm2dh.user_id[0] | ((size_t)m_child_cert->pub_key.sm2dh.user_id[1]<<8);
 
-            cert_userid_len+=2;
+            // cert_userid_len+=2;
             printf("this_cert_userid_len: %zu\n",cert_userid_len);
 
             uint8_t * used_user_id_buff = (uint8_t*) malloc(cert_userid_len);
-            memcpy(used_user_id_buff, m_child_cert->pub_key.sm2dh.user_id+1 ,1);
-            memcpy(used_user_id_buff+1, m_child_cert->pub_key.sm2dh.user_id ,1);
-            memcpy(used_user_id_buff+2, m_child_cert->pub_key.sm2dh.user_id+2 ,cert_userid_len-2);
+            // memcpy(used_user_id_buff, m_child_cert->pub_key.sm2dh.user_id+1 ,1);
+            // memcpy(used_user_id_buff+1, m_child_cert->pub_key.sm2dh.user_id ,1);
+            memcpy(used_user_id_buff, m_child_cert->pub_key.sm2dh.user_id+2 ,cert_userid_len);
+            printf("the following is the user_id used for signature\n");
+            print_bytes_arr(used_user_id_buff, cert_userid_len);
+            printf("user-id sting %s\n",used_user_id_buff);
 
             // return sign_message_csv(&m_child_cert->sig_1, priv_evp_key, (uint8_t *)m_child_cert, pub_key_offset, m_child_cert->pub_key.sm2dh.user_id, cert_userid_len,sig_1_algo);
             return sign_message_csv(&m_child_cert->sig_1, priv_evp_key, (uint8_t *)m_child_cert, pub_key_offset, used_user_id_buff, cert_userid_len,sig_1_algo);
@@ -722,13 +741,17 @@ bool SEVCert::sign_with_key(uint32_t version, uint32_t pub_key_usage,
             //obtain the length
             size_t cert_userid_len = (size_t)m_child_cert->pub_key.sm2sa.user_id[0] | ((size_t)m_child_cert->pub_key.sm2sa.user_id[1]<<8);
 
-            cert_userid_len +=2;
+            // cert_userid_len +=2;
             printf("this_cert_userid_len: %zu\n",cert_userid_len);
 
             uint8_t * used_user_id_buff = (uint8_t*) malloc(cert_userid_len);
-            memcpy(used_user_id_buff, m_child_cert->pub_key.sm2sa.user_id+1 ,1);
-            memcpy(used_user_id_buff+1, m_child_cert->pub_key.sm2sa.user_id ,1);
-            memcpy(used_user_id_buff+2, m_child_cert->pub_key.sm2sa.user_id+2 ,cert_userid_len-2);
+            // memcpy(used_user_id_buff, m_child_cert->pub_key.sm2sa.user_id+1 ,1);
+            // memcpy(used_user_id_buff+1, m_child_cert->pub_key.sm2sa.user_id ,1);
+            memcpy(used_user_id_buff, m_child_cert->pub_key.sm2sa.user_id+2 ,cert_userid_len);
+            printf("the following is the user_id used for signature\n");
+            print_bytes_arr(used_user_id_buff, cert_userid_len);
+            printf("user-id sting %s\n",used_user_id_buff);
+            
             
             // return sign_message_csv(&m_child_cert->sig_1, priv_evp_key, (uint8_t *)m_child_cert, pub_key_offset, m_child_cert->pub_key.sm2sa.user_id, cert_userid_len,sig_1_algo);
             return sign_message_csv(&m_child_cert->sig_1, priv_evp_key, (uint8_t *)m_child_cert, pub_key_offset, used_user_id_buff, cert_userid_len,sig_1_algo);
@@ -983,13 +1006,13 @@ SEV_ERROR_CODE SEVCert::validate_signature(const sev_cert *child_cert,
                     //obtain the length
                     size_t cert_userid_len = (size_t)child_cert->pub_key.sm2dh.user_id[0] | ((size_t)child_cert->pub_key.sm2dh.user_id[1]<<8);
 
-                    cert_userid_len+=2;
+                    // cert_userid_len+=2;
                     printf("this_cert_userid_len: %zu\n",cert_userid_len);
 
                     uint8_t * used_user_id_buff = (uint8_t*) malloc(cert_userid_len);
-                    memcpy(used_user_id_buff, child_cert->pub_key.sm2dh.user_id+1 ,1);
-                    memcpy(used_user_id_buff+1, child_cert->pub_key.sm2dh.user_id ,1);
-                    memcpy(used_user_id_buff+2, child_cert->pub_key.sm2dh.user_id+2 ,cert_userid_len-2);
+                    // memcpy(used_user_id_buff, child_cert->pub_key.sm2dh.user_id+1 ,1);
+                    // memcpy(used_user_id_buff+1, child_cert->pub_key.sm2dh.user_id ,1);
+                    memcpy(used_user_id_buff, child_cert->pub_key.sm2dh.user_id+2 ,cert_userid_len);
 
                     // if(!sm2sa_verify(&tsev_sig, &parent_signing_key,(uint8_t *)child_cert,pub_key_offset,child_cert->pub_key.sm2dh.user_id,cert_userid_len) )
                     if(!sm2sa_verify(&tsev_sig, &parent_signing_key,(uint8_t *)child_cert,pub_key_offset,used_user_id_buff,cert_userid_len) )
@@ -1002,13 +1025,13 @@ SEV_ERROR_CODE SEVCert::validate_signature(const sev_cert *child_cert,
                     //obtain the length
                     size_t cert_userid_len = (size_t)child_cert->pub_key.sm2sa.user_id[0] | ((size_t)child_cert->pub_key.sm2sa.user_id[1]<<8);
 
-                    cert_userid_len+=2;
+                    // cert_userid_len+=2;
                     printf("this_cert_userid_len: %zu\n",cert_userid_len);
 
                     uint8_t * used_user_id_buff = (uint8_t*) malloc(cert_userid_len);
-                    memcpy(used_user_id_buff, child_cert->pub_key.sm2sa.user_id+1 ,1);
-                    memcpy(used_user_id_buff+1, child_cert->pub_key.sm2sa.user_id ,1);
-                    memcpy(used_user_id_buff+2, child_cert->pub_key.sm2sa.user_id+2 ,cert_userid_len-2);
+                    // memcpy(used_user_id_buff, child_cert->pub_key.sm2sa.user_id+1 ,1);
+                    // memcpy(used_user_id_buff+1, child_cert->pub_key.sm2sa.user_id ,1);
+                    memcpy(used_user_id_buff, child_cert->pub_key.sm2sa.user_id+2 ,cert_userid_len);
 
                     if(!sm2sa_verify(&tsev_sig, &parent_signing_key,(uint8_t *)child_cert,pub_key_offset,used_user_id_buff,cert_userid_len)){
                     continue;
