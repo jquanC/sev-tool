@@ -1079,8 +1079,13 @@ static bool sm2sa_sign(sev_sig *sig, EVP_PKEY **priv_evp_key,
         }
         // Extract the bignums from sm2_sig and store the signature in sig
         ECDSA_SIG_get0(sm2_sig, &r, &s);
-        if (!BN_bn2lebinpad(r, sig->ecdsa.r, sizeof(sig->ecdsa.r)) ||
-            !BN_bn2lebinpad(s, sig->ecdsa.s, sizeof(sig->ecdsa.s))) {
+        // if (!BN_bn2lebinpad(r, sig->ecdsa.r, sizeof(sig->ecdsa.r)) ||
+        //     !BN_bn2lebinpad(s, sig->ecdsa.s, sizeof(sig->ecdsa.s))) {
+        //     printf("Error: BN_bn2binpad failed\n");
+        //     break;
+        // }
+        if (!BN_bn2binpad(r, sig->ecdsa.r, sizeof(sig->ecdsa.r)) ||
+            !BN_bn2binpad(s, sig->ecdsa.s, sizeof(sig->ecdsa.s))) {
             printf("Error: BN_bn2binpad failed\n");
             break;
         }
@@ -1294,8 +1299,10 @@ bool sm2sa_verify(sev_sig *sig, EVP_PKEY **pub_evp_key, const uint8_t *msg, size
         }
 
         // extrac signature from sig, then turn into ECDSA_SIG and further turn into  DER format
-        r = BN_lebin2bn(sig->ecdsa.r, sizeof(sig->ecdsa.r),NULL);
-        s = BN_lebin2bn(sig->ecdsa.s, sizeof(sig->ecdsa.s),NULL);  
+        // r = BN_lebin2bn(sig->ecdsa.r, sizeof(sig->ecdsa.r),NULL);
+        // s = BN_lebin2bn(sig->ecdsa.s, sizeof(sig->ecdsa.s),NULL);  
+        r = BN_bin2bn(sig->ecdsa.r, sizeof(sig->ecdsa.r),NULL);
+        s = BN_bin2bn(sig->ecdsa.s, sizeof(sig->ecdsa.s),NULL);
         ecdsa_sig = ECDSA_SIG_new();
         ECDSA_SIG_set0(ecdsa_sig, r, s);
         sig_der_len = i2d_ECDSA_SIG(ecdsa_sig, &sig_der);
