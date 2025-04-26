@@ -1084,6 +1084,7 @@ static bool sm2sa_sign(sev_sig *sig, EVP_PKEY **priv_evp_key,
         //     printf("Error: BN_bn2binpad failed\n");
         //     break;
         // }
+        //修改为大端序;(fail->后面再回退为小端序: 2025.03.26)
         if (!BN_bn2binpad(r, sig->ecdsa.r, sizeof(sig->ecdsa.r)) ||
             !BN_bn2binpad(s, sig->ecdsa.s, sizeof(sig->ecdsa.s))) {
             printf("Error: BN_bn2binpad failed\n");

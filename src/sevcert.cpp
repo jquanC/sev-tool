@@ -1169,15 +1169,12 @@ SEV_ERROR_CODE SEVCert::compile_public_key_from_certificate(const sev_cert *cert
                 y_big_num = BN_lebin2bn(cert->pub_key.sm2sa.qy, sizeof(cert->pub_key.sm2sa.qy), NULL);
             }
             int nid = -1;
-            if((cert->pub_key_algo == SEV_SIG_ALGO_ECDSA_SHA256) || (cert->pub_key_algo == SEV_SIG_ALGO_ECDH_SHA256))
-                nid = EC_curve_nist2nid("P-256");
-            if((cert->pub_key_algo == SEV_SIG_ALGO_ECDSA_SHA384) || (cert->pub_key_algo == SEV_SIG_ALGO_ECDH_SHA384))
-                nid = EC_curve_nist2nid("P-384");
-            if((cert->pub_key_algo == SIG_ALGO_TYPE_SM2_DH) || (cert->pub_key_algo == SIG_ALGO_TYPE_SM2_SA))
+            if((cert->pub_key_algo == SIG_ALGO_TYPE_SM2_DH) || (cert->pub_key_algo == SIG_ALGO_TYPE_SM2_SA)){
                 nid = OBJ_sn2nid("SM2");
-
-            // int nid = EC_curve_nist2nid("P-384");   // NID_secp384r1
-
+            }else{
+                nid = EC_curve_nist2nid("P-384"); // NID_secp384r1
+            }
+           
             // Create/allocate memory for an EC_KEY object using the NID above
             if (!(ec_pub_key = EC_KEY_new_by_curve_name(nid)))
                 break;
