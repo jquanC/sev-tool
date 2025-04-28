@@ -33,6 +33,21 @@
 
 // #include <openssl/core_names.h> // e.g., use EVP_PKEY_assign_EC_KEY
 
+static void print_bytes_arr(const uint8_t* arr, size_t len){
+    for(int i=0;i < len;i++){
+            if(i % 16 == 0){
+                printf("%08x:",i);
+            }
+            printf("%02x", arr[i]);
+            if((i+1)%16 == 0 || i == len - 1){
+                printf("\n");
+            }else{
+                printf(" ");
+            }
+        }
+    printf("\n");
+}
+
 // NIST Compliant KDF
 bool kdf(uint8_t *key_out,       size_t key_out_length,
          const uint8_t *key_in,  size_t key_in_length,
@@ -998,22 +1013,54 @@ EVP_PKEY *adjust_sm2_key(const EVP_PKEY *ori_priv_evp_key) {
     return new_evp_key;
 }
 
-/* digest ptr to unhased contend */
-/* 在签名函数中，他们使用了EVP_DigestSign系列函数生成签名，然后将DER格式的签名转换为ECDSA_SIG结构，提取r和s，存储到sig结构体中。验证时，他们又从sig中读取r和s，重新构造ECDSA_SIG，再转换成DER格式进行验证 */
+/* 1.定义ASN.1序列结果；对应数据结构中域的定义 */
+// 对于BIGNUM会自动转换为ASN1_INTEGER编码
+// OCTET_STRING直接对应ASN.1类型 */
+/* 2. 实现编解码函数 (通过宏自动生成以下函数)*/
+ASN1_SEQUENCE(mSM2_Signature) = {
+    ASN1_SIMPLE(mSM2_Signature, r, BIGNUM),
+    ASN1_SIMPLE(mSM2_Signature, s, BIGNUM),
+} ASN1_SEQUENCE_END(mSM2_Signature)
+IMPLEMENT_ASN1_FUNCTIONS(mSM2_Signature)
+
+//self-implemented mSM2_Signature_get0
+void mSM2_Signature_get0(const mSM2_Signature *sig, const BIGNUM **r, const BIGNUM **s) {
+    if (r != NULL) {
+        *r = sig->r;  // 直接返回结构体内 r 的指针
+    }
+    if (s != NULL) {
+        *s = sig->s;  // 直接返回结构体内 s 的指针
+    }
+}
+
+int mSM2_Signature_set0(mSM2_Signature *sig, BIGNUM *r, BIGNUM *s){
+    if(sig == NULL){
+        return 0;
+    }
+    if(r != NULL){
+        BN_free(sig->r);
+        sig->r = r;
+    }
+    if(s != NULL){
+        BN_free(sig->s);
+        sig->s = s;
+    }
+    return 1;
+}
+
 
 static bool sm2sa_sign(sev_sig *sig, EVP_PKEY **priv_evp_key,
                        const uint8_t *msg, size_t length, const uint8_t * user_id, size_t user_id_len){
     bool is_valid = false;
     // EC_KEY *priv_ec_key = NULL;
     EVP_MD_CTX *mdctx = NULL;
+    size_t sig_len;
     uint8_t *signature = NULL;
     uint8_t *signature_ptr = NULL;
     EVP_PKEY_CTX *pctx = NULL;
-
+    mSM2_Signature *sm2_sig = NULL;
     const BIGNUM *r = NULL;
     const BIGNUM *s = NULL;
-    ECDSA_SIG *sm2_sig = NULL;
-    size_t sig_len;
 
     do {
         // We use id-ecPublicKey, not SM2
@@ -1038,6 +1085,9 @@ static bool sm2sa_sign(sev_sig *sig, EVP_PKEY **priv_evp_key,
 
         // 设置用户ID
         /* The EVP_PKEY_CTX_set1_id() sets an ID pointed by id with the length id_len to the library. The library takes a copy of the id so that the caller can safely free the original memory pointed to by id. */
+        printf("Finally used user_id_len for EVP_PKEY_CTX_set1_id : %zu\n", user_id_len);
+        printf("Finaly used use_id content for EVP_PKEY_CTX_set1_id\n");
+        print_bytes_arr(user_id, user_id_len);
         if (EVP_PKEY_CTX_set1_id(EVP_MD_CTX_get_pkey_ctx(md_ctx), user_id, user_id_len) <= 0) {
             printf("Error: EVP_PKEY_CTX_set1_id failed\n");
             ERR_print_errors_fp(stderr);
@@ -1069,7 +1119,7 @@ static bool sm2sa_sign(sev_sig *sig, EVP_PKEY **priv_evp_key,
 
         //trans Der-encoded signature to ECDSA_SIG
         signature_ptr =signature;
-        sm2_sig = d2i_ECDSA_SIG(NULL, (const unsigned char**)&signature_ptr, sig_len);
+        sm2_sig = d2i_mSM2_Signature(NULL, (const unsigned char**)&signature_ptr, sig_len);
         if(!sm2_sig){
             printf("Error: d2i_ECDSA_SIG failed\n");
             //避免重复释放
@@ -1078,13 +1128,17 @@ static bool sm2sa_sign(sev_sig *sig, EVP_PKEY **priv_evp_key,
             break;
         }
         // Extract the bignums from sm2_sig and store the signature in sig
-        ECDSA_SIG_get0(sm2_sig, &r, &s);
+        mSM2_Signature_get0(sm2_sig, &r, &s);
         // if (!BN_bn2lebinpad(r, sig->ecdsa.r, sizeof(sig->ecdsa.r)) ||
         //     !BN_bn2lebinpad(s, sig->ecdsa.s, sizeof(sig->ecdsa.s))) {
         //     printf("Error: BN_bn2binpad failed\n");
         //     break;
         // }
         //修改为大端序;(fail->后面再回退为小端序: 2025.03.26)
+            //怀疑出错是这个地方；
+            //BN_bn2bin() converts the absolute value of a into big-endian form and stores it at to. to must point to BN_num_bytes(a) bytes of memory.
+            //BN_bn2binpad() also converts the absolute value of a into big-endian form and stores it at to. tolen indicates the length of the output buffer to. The result is padded with zeros if necessary. If tolen is less than BN_num_bytes(a) an error is returned.
+            //从文档来看，里是用 sig->ecdsa.r 576 没错
         if (!BN_bn2binpad(r, sig->ecdsa.r, sizeof(sig->ecdsa.r)) ||
             !BN_bn2binpad(s, sig->ecdsa.s, sizeof(sig->ecdsa.s))) {
             printf("Error: BN_bn2binpad failed\n");
@@ -1098,7 +1152,7 @@ static bool sm2sa_sign(sev_sig *sig, EVP_PKEY **priv_evp_key,
     } while (0);
 
     // Free memory
-    ECDSA_SIG_free(sm2_sig);
+    mSM2_Signature_free(sm2_sig);
     OPENSSL_free(signature);//check point: the signaure (r,s) are copied to sig->ecdsa.r and sig->ecdsa.s
     EVP_MD_CTX_free(mdctx);
     //free mdctx的时候，会释放自动关联的pctx
@@ -1264,7 +1318,7 @@ bool sm2sa_verify(sev_sig *sig, EVP_PKEY **pub_evp_key, const uint8_t *msg, size
     EVP_PKEY_CTX *pctx = NULL;
     unsigned char *sig_der = NULL;
     int sig_der_len;
-    ECDSA_SIG *ecdsa_sig = NULL;
+    mSM2_Signature *ecdsa_sig = NULL;
     BIGNUM *r = NULL;
     BIGNUM *s = NULL;
 
@@ -1304,9 +1358,10 @@ bool sm2sa_verify(sev_sig *sig, EVP_PKEY **pub_evp_key, const uint8_t *msg, size
         // s = BN_lebin2bn(sig->ecdsa.s, sizeof(sig->ecdsa.s),NULL);  
         r = BN_bin2bn(sig->ecdsa.r, sizeof(sig->ecdsa.r),NULL);
         s = BN_bin2bn(sig->ecdsa.s, sizeof(sig->ecdsa.s),NULL);
-        ecdsa_sig = ECDSA_SIG_new();
-        ECDSA_SIG_set0(ecdsa_sig, r, s);
-        sig_der_len = i2d_ECDSA_SIG(ecdsa_sig, &sig_der);
+        ecdsa_sig = mSM2_Signature_new();
+        // ECDSA_SIG_set0(ecdsa_sig, r, s);
+        mSM2_Signature_set0(ecdsa_sig, r, s);
+        sig_der_len = i2d_mSM2_Signature(ecdsa_sig, &sig_der);
         if (sig_der_len <= 0){
             printf("Error: i2d_ECDSA_SIG failed\n");
             break;

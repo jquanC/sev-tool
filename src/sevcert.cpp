@@ -422,13 +422,13 @@ bool SEVCert::create_pdh_cert_csv(EVP_PKEY **pdh_key_pair, EVP_PKEY **pek_key_pa
                 0x0D, 0x00, 0x48, 0x59, 0x47, 0x4F, 0x4E, 0x2D, \
                 0x53, 0x53, 0x44, 0x2D, 0x50, 0x44, 0x48, 0x00
             };
-            //obtain the length
-            size_t pdh_userid_len = (size_t)pdh_user_id_init[0] | ((size_t)pdh_user_id_init[1]<<8);
-            printf("pdh_userid_len: %zu\n",pdh_userid_len);
+            // //obtain the length
+            // size_t pdh_userid_len = (size_t)pdh_user_id_init[0] | ((size_t)pdh_user_id_init[1]<<8);
+            // printf("pdh_userid_len: %zu\n",pdh_userid_len);
 
             //decompile into cert should keep magic number
             std::memcpy(m_child_cert->pub_key.sm2dh.user_id, pdh_user_id_init,sizeof(pdh_user_id_init));
-        
+            
     
             // Set the pubkey portion of the cert
             if (decompile_public_key_into_certificate_csv(m_child_cert, *pdh_key_pair) != STATUS_SUCCESS)
@@ -526,8 +526,8 @@ bool SEVCert::create_pek_cert_csv(EVP_PKEY **pek_key_pair, EVP_PKEY **oca_key_pa
                 0x53, 0x53 ,0x44, 0x2D, 0x50, 0x45, 0x4B, 0x00
             };
             //obtain the length
-            size_t pek_userid_len = (size_t)pek_user_id_init[0] | ((size_t)pek_user_id_init[1]<<8);
-            printf("pek_userid_len: %zu\n",pek_userid_len);
+            // size_t pek_userid_len = (size_t)pek_user_id_init[0] | ((size_t)pek_user_id_init[1]<<8);
+            // printf("pek_userid_len: %zu\n",pek_userid_len);
 
             //decompile into cert should keep magic number
             std::memcpy(m_child_cert->pub_key.sm2sa.user_id, pek_user_id_init, sizeof(pek_user_id_init));
@@ -622,8 +622,8 @@ bool SEVCert::create_oca_cert_csv(EVP_PKEY **oca_key_pair, SEV_SIG_ALGO algo)
             };
 
             //obtain the length further usage
-            size_t oca_userid_len = (size_t)oca_user_id_init[0] | ((size_t)oca_user_id_init[1]<<8);
-            printf("oca_userid_len: %zu\n",oca_userid_len);
+            // size_t oca_userid_len = (size_t)oca_user_id_init[0] | ((size_t)oca_user_id_init[1]<<8);
+            // printf("oca_userid_len: %zu\n",oca_userid_len);
 
             //decompile into the cert, should keep magic number
             std::memcpy(m_child_cert->pub_key.sm2sa.user_id, oca_user_id_init, sizeof(oca_user_id_init));
@@ -722,7 +722,7 @@ bool SEVCert::sign_with_key(uint32_t version, uint32_t pub_key_usage,
             size_t cert_userid_len = (size_t)m_child_cert->pub_key.sm2dh.user_id[0] | ((size_t)m_child_cert->pub_key.sm2dh.user_id[1]<<8);
 
             // cert_userid_len+=2;
-            printf("this_cert_userid_len: %zu\n",cert_userid_len);
+            printf("this_cert_userid_len wthout idlen: %zu\n",cert_userid_len);
 
             uint8_t * used_user_id_buff = (uint8_t*) malloc(cert_userid_len);
             // memcpy(used_user_id_buff, m_child_cert->pub_key.sm2dh.user_id+1 ,1);

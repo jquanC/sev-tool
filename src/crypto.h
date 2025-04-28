@@ -28,6 +28,8 @@
 #include <openssl/hmac.h>
 #include <openssl/rsa.h>
 #include <openssl/sha.h>
+#include <openssl/asn1.h>
+#include <openssl/asn1t.h>
 
 /**
  * NIST_KDF
@@ -70,6 +72,28 @@ typedef uint8_t DIGESTSHA512[DIGEST_SHA512_SIZE_BYTES];
  */
 #define ECC_KEYGEN_EXTRA_BITS   (64)
 #define ECC_KEYGEN_EXTRA_BYTES  (ECC_KEYGEN_EXTRA_BITS/8)
+
+//始结构体定义（需保持与ASN1_SEQUENCE一致）
+struct mSM2_Ciphertext_st {
+    BIGNUM *C1x;
+    BIGNUM *C1y;
+    ASN1_OCTET_STRING *C3;
+    ASN1_OCTET_STRING *C2;
+};
+
+/* mSM2_Ciphertext_st */
+//声明ASN.1函数原型
+typedef struct mSM2_Ciphertext_st mSM2_Ciphertext;
+DECLARE_ASN1_FUNCTIONS(mSM2_Ciphertext)
+
+//定义签名结构体
+struct mSM2_Signature_st {
+    BIGNUM *r;
+    BIGNUM *s;
+};
+typedef struct mSM2_Signature_st mSM2_Signature;
+DECLARE_ASN1_FUNCTIONS(mSM2_Signature)
+
 
 
 typedef enum __attribute__((mode(QI))) SHA_TYPE
