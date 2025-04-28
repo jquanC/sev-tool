@@ -1396,10 +1396,21 @@ SEV_ERROR_CODE SEVCert::decompile_public_key_into_certificate_csv(sev_cert *cert
             // Store the x and y components into the cert. The values in the
             // BIGNUM are stored as big-endian, so must reverse bytes before
             // storing in SEV certificate as little-endian
-            if (BN_bn2lebinpad(x_bignum, (unsigned char *)cert->pub_key.ecdh.qx, sizeof(cert->pub_key.ecdh.qx)) <= 0)
+            if(cert->pub_key_algo == SIG_ALGO_TYPE_SM2_DH){
+                cert->pub_key.sm2dh.curve = CSV_EC_SM2_256;
+                if (BN_bn2lebinpad(x_bignum, (unsigned char *)cert->pub_key.ecdh.qx, sizeof(cert->pub_key.ecdh.qx)) <= 0)
+                    break;
+                if (BN_bn2lebinpad(y_bignum, (unsigned char *)cert->pub_key.ecdh.qy, sizeof(cert->pub_key.ecdh.qy)) <= 0)
+                    break;
+            }     
+            else if(cert->pub_key_algo == SIG_ALGO_TYPE_SM2_SA){
+                cert->pub_key.sm2sa.curve = CSV_EC_SM2_256;
+                if (BN_bn2lebinpad(x_bignum, (unsigned char *)cert->pub_key.sm2sa.qx, sizeof(cert->pub_key.sm2sa.qx)) <= 0)
+                    break;
+                if (BN_bn2lebinpad(y_bignum, (unsigned char *)cert->pub_key.sm2sa.qy, sizeof(cert->pub_key.sm2sa.qy)) <= 0)
                 break;
-            if (BN_bn2lebinpad(y_bignum, (unsigned char *)cert->pub_key.ecdh.qy, sizeof(cert->pub_key.ecdh.qy)) <= 0)
-                break;
+            }
+
         }
 
         if (!evp_pubkey)

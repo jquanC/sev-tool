@@ -1129,6 +1129,10 @@ static bool sm2sa_sign(sev_sig *sig, EVP_PKEY **priv_evp_key,
         }
         // Extract the bignums from sm2_sig and store the signature in sig
         mSM2_Signature_get0(sm2_sig, &r, &s);
+        if(r==NULL ||s==NULL){
+            printf("Error: mSM2_Signature_get0 failed\n");
+            break;
+        }
         // if (!BN_bn2lebinpad(r, sig->ecdsa.r, sizeof(sig->ecdsa.r)) ||
         //     !BN_bn2lebinpad(s, sig->ecdsa.s, sizeof(sig->ecdsa.s))) {
         //     printf("Error: BN_bn2binpad failed\n");
@@ -1154,10 +1158,15 @@ static bool sm2sa_sign(sev_sig *sig, EVP_PKEY **priv_evp_key,
     // Free memory
     mSM2_Signature_free(sm2_sig);
     OPENSSL_free(signature);//check point: the signaure (r,s) are copied to sig->ecdsa.r and sig->ecdsa.s
+    printf("confirm checking-point, handle of the cert_signature\n");
+    print_bytes_arr(sig->ecdsa.r, sizeof(sig->ecdsa.r));
+    print_bytes_arr(sig->ecdsa.s, sizeof(sig->ecdsa.s));
+
     EVP_MD_CTX_free(mdctx);
     //free mdctx的时候，会释放自动关联的pctx
     // EVP_PKEY_CTX_free(pctx);
     // EC_KEY_free(priv_ec_key);
+
 
     return is_valid;
 }
@@ -1358,9 +1367,15 @@ bool sm2sa_verify(sev_sig *sig, EVP_PKEY **pub_evp_key, const uint8_t *msg, size
         // s = BN_lebin2bn(sig->ecdsa.s, sizeof(sig->ecdsa.s),NULL);  
         r = BN_bin2bn(sig->ecdsa.r, sizeof(sig->ecdsa.r),NULL);
         s = BN_bin2bn(sig->ecdsa.s, sizeof(sig->ecdsa.s),NULL);
+        if(r==NULL || s==NULL){
+            printf("Error: BN_bin2bn failed\n");
+            break;
+        }
         ecdsa_sig = mSM2_Signature_new();
         // ECDSA_SIG_set0(ecdsa_sig, r, s);
-        mSM2_Signature_set0(ecdsa_sig, r, s);
+        if(mSM2_Signature_set0(ecdsa_sig, r, s)<=0){
+            printf("mSM2_Signature_set0 failed\n");
+        }
         sig_der_len = i2d_mSM2_Signature(ecdsa_sig, &sig_der);
         if (sig_der_len <= 0){
             printf("Error: i2d_ECDSA_SIG failed\n");

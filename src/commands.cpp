@@ -1220,6 +1220,7 @@ int Command::mh_export_cert_key(void){
     }
     //1.3 将证书写道当前路径
     //size_t oca_size; not to check the size at the current;
+    printf("\n");
     sev::write_file(OCA_path,oca_obj.data(),sizeof(sev_cert));
     //1.4 将私钥写道当前路径
     if(!write_priv_key_pem(oca_priv_key_pem, oca_key_pair)){
@@ -1247,6 +1248,7 @@ int Command::mh_export_cert_key(void){
         break;
     }
     //2.3 将证书写道当前路径
+    printf("\n");
     sev::write_file(PEK_path, pek_obj.data(), sizeof(sev_cert));
     //2.4 将私钥写道当前路径
     if(!write_priv_key_pem(pek_priv_key_pem, pek_key_pair)){
@@ -1274,6 +1276,7 @@ int Command::mh_export_cert_key(void){
         break;
     }
     //3.3 将证书写道当前路径
+    printf("\n");
     sev::write_file(PDH_path, pdh_obj.data(), sizeof(sev_cert));
     //3.4 将私钥写道当前路径
     if(!write_priv_key_pem(pdh_priv_key_pem, pdh_key_pair)){
@@ -1406,6 +1409,7 @@ int Command:: mh_export_csv_cert_key(bool flag,std::string oca_priv_key_file,std
     }
     //1.3 将证书写道当前路径
     //size_t oca_size; not to check the size at the current;
+    printf("\n");
     sev::write_file(OCA_path,oca_obj.data(),sizeof(sev_cert));
 
     //1.4 将私钥写道当前路径
@@ -1466,6 +1470,7 @@ int Command:: mh_export_csv_cert_key(bool flag,std::string oca_priv_key_file,std
         break;
     }
     //2.3 将证书写道当前路径 
+    printf("\n");
     sev::write_file(PEK_path, pek_obj.data(), sizeof(sev_cert));
     //2.4 将私钥写道当前路径(the original one)
     if(!write_priv_key_pem_csv(dup_pek_priv_key_pem, dup_pek_key_pair)){
@@ -1500,6 +1505,7 @@ int Command:: mh_export_csv_cert_key(bool flag,std::string oca_priv_key_file,std
         break;
     }
     //3.3 将证书写到当前路径 (use the original one)
+    printf("\n");
     sev::write_file(PDH_path, pdh_obj.data(), sizeof(sev_cert));
     //3.4 将私钥写到当前路径
     if(!write_priv_key_pem_csv(dup_pdh_priv_key_pem, dup_pdh_key_pair)){
