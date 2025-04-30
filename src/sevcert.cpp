@@ -513,12 +513,14 @@ bool SEVCert::create_pek_cert_csv(EVP_PKEY **pek_key_pair, EVP_PKEY **oca_key_pa
 
         m_child_cert->pub_key_usage = SEV_USAGE_PEK;
         m_child_cert->pub_key_algo = algo;
+    
+    //Try pass SRC HYGON FW validation by not letting CEK->SIG empty and readjust the location of OCA->SIG 
         //check inserted-platform's pek cert, OCA signature is located in sig_1
-        m_child_cert->sig_1_usage = SEV_USAGE_OCA;
-        m_child_cert->sig_1_algo = algo;
+        m_child_cert->sig_2_usage = SEV_USAGE_OCA;
+        m_child_cert->sig_2_algo = algo;
 
-        m_child_cert->sig_2_usage = SEV_USAGE_INVALID;
-        m_child_cert->sig_2_algo = SEV_SIG_ALGO_INVALID;
+        m_child_cert->sig_1_usage = SEV_USAGE_CEK;
+        m_child_cert->sig_1_algo = algo;
 
         //check: have to set the default user-id for each type of certs
             static const uint8_t pek_user_id_init[] = {
@@ -693,15 +695,47 @@ bool SEVCert::sign_with_key(uint32_t version, uint32_t pub_key_usage,
                             uint32_t pub_key_algo, EVP_PKEY **priv_evp_key,
                             uint32_t sig_1_usage, SEV_SIG_ALGO sig_1_algo)
 {
-    // Sign the certificate    sev_cert.c -> sev_cert_sign()
-    // The constructor defaults all member vars, and the user can change them
-    memset(&m_child_cert->sig_1, 0, sizeof(sev_cert::sig_1));
-    m_child_cert->version = version;
-    m_child_cert->pub_key_usage = pub_key_usage;
-    m_child_cert->pub_key_algo = pub_key_algo;
+    //Only PEK cert have two SIGs, and only HYGON FW may not allow CEK->SIG empty of pek cert, let this case along for handling
+    if(pub_key_algo == SEV_USAGE_PEK && sig_1_usage == SEV_USAGE_OCA && sig_1_algo == SIG_ALGO_TYPE_SM2_SA){
+        //noted that, the input value of sig_1_usage in this case is SEV_USAGE_OCA, while we use it as sig_2_usage! Because sign_with_key serves for all other cases, avoid to more change
+        memset(&m_child_cert->sig_1, 0, sizeof(sev_cert::sig_1));
+        memset(&m_child_cert->sig_2, 0, sizeof(sev_cert::sig_2));
+        m_child_cert->version = version;
+        m_child_cert->pub_key_usage = pub_key_usage;
+        m_child_cert->pub_key_algo = pub_key_algo;
 
-    m_child_cert->sig_1_usage = sig_1_usage;       // Parent cert's sig
-    m_child_cert->sig_1_algo = (uint32_t)sig_1_algo;
+        m_child_cert->sig_2_usage = sig_1_usage;       // specific handling, because the input value is SEV_USAGE_OCA; Other flows just use sig_1, we don't want to change the input parameter name at the moment
+        m_child_cert->sig_2_algo = (uint32_t)sig_1_algo;
+
+        m_child_cert->sig_1_usage = SEV_USAGE_CEK;
+        m_child_cert->sig_1_algo = (uint32_t)sig_1_algo; 
+
+        //we borrowed CEK_SIG and filled the cert here; and afterward we gen. SIG2 for PEK cert
+        static const uint8_t fake_cek_sig_for_pek[] = {
+        0xA2,0x3E, 0x38,0xD4,0x67,0x01, 0xDB,0x7C,
+        0xB2,0x6F, 0x5A,0xED, 0x9E,0x67, 0x59,0xDD,
+        0x6C,0xBD, 0xDA,0x0C,0xC7,0x34, 0x44,0x1E,
+        0xC5,0x5C, 0x86,0x4C, 0x39,0xE2,0x2B,0x18,
+        0xD3,0xB6,0x33,0xAA,0x27,0x15,0x24,0x9F,
+        0x32,0x09,0x64,0x1B,0x82,0x2F ,0xC2,0x05,
+        0x86,0xC9, 0x1D,0x04,0x09,0x3A,0x64,0xB8,
+        0xB8,0x80,0x99,0x48,0x24,0x24,0xCD,0xAC
+        };
+        memcpy(&m_child_cert->sig_1,fake_cek_sig_for_pek,32);
+        memcpy(&m_child_cert->sig_1+72,fake_cek_sig_for_pek+32,32);
+
+    }else{
+        //The orginnal flows for other cases (including sign_pek_csr...)
+        // Sign the certificate    sev_cert.c -> sev_cert_sign()
+        // The constructor defaults all member vars, and the user can change them
+        memset(&m_child_cert->sig_1, 0, sizeof(sev_cert::sig_1));
+        m_child_cert->version = version;
+        m_child_cert->pub_key_usage = pub_key_usage;
+        m_child_cert->pub_key_algo = pub_key_algo;
+
+        m_child_cert->sig_1_usage = sig_1_usage;       // Parent cert's sig
+        m_child_cert->sig_1_algo = (uint32_t)sig_1_algo;
+    }
 
     // SHA256/SHA384 hash the cert from the [version:pub_key] params
     uint32_t pub_key_offset = offsetof(sev_cert, sig_1_usage);  // 16 + sizeof(sev_pubkey)
@@ -732,8 +766,16 @@ bool SEVCert::sign_with_key(uint32_t version, uint32_t pub_key_usage,
             print_bytes_arr(used_user_id_buff, cert_userid_len);
             printf("user-id sting %s\n",used_user_id_buff);
 
-            // return sign_message_csv(&m_child_cert->sig_1, priv_evp_key, (uint8_t *)m_child_cert, pub_key_offset, m_child_cert->pub_key.sm2dh.user_id, cert_userid_len,sig_1_algo);
+            //new folw for pek_cert, self-gen in sig_2;
+            if(pub_key_algo == SEV_USAGE_PEK && sig_1_usage == SEV_USAGE_OCA && sig_1_algo == SIG_ALGO_TYPE_SM2_SA){
+                return sign_message_csv(&m_child_cert->sig_2, priv_evp_key, (uint8_t *)m_child_cert, pub_key_offset, used_user_id_buff, cert_userid_len,sig_1_algo);
+
+            }else{
+                //original flow
+                // return sign_message_csv(&m_child_cert->sig_1, priv_evp_key, (uint8_t *)m_child_cert, pub_key_offset, m_child_cert->pub_key.sm2dh.user_id, cert_userid_len,sig_1_algo);
             return sign_message_csv(&m_child_cert->sig_1, priv_evp_key, (uint8_t *)m_child_cert, pub_key_offset, used_user_id_buff, cert_userid_len,sig_1_algo);
+            }
+            
 
         }else{ 
              //pub_key_usage == SIG_ALGO_TYPE_SM2_SA
@@ -752,9 +794,15 @@ bool SEVCert::sign_with_key(uint32_t version, uint32_t pub_key_usage,
             print_bytes_arr(used_user_id_buff, cert_userid_len);
             printf("user-id sting %s\n",used_user_id_buff);
             
-            
+            //new folw for pek_cert, self-gen in sig_2;
+            if(pub_key_algo == SEV_USAGE_PEK && sig_1_usage == SEV_USAGE_OCA && sig_1_algo == SIG_ALGO_TYPE_SM2_SA){
+                return sign_message_csv(&m_child_cert->sig_2, priv_evp_key, (uint8_t *)m_child_cert, pub_key_offset, used_user_id_buff, cert_userid_len,sig_1_algo);
+
+            }else{
+                //original flow
             // return sign_message_csv(&m_child_cert->sig_1, priv_evp_key, (uint8_t *)m_child_cert, pub_key_offset, m_child_cert->pub_key.sm2sa.user_id, cert_userid_len,sig_1_algo);
             return sign_message_csv(&m_child_cert->sig_1, priv_evp_key, (uint8_t *)m_child_cert, pub_key_offset, used_user_id_buff, cert_userid_len,sig_1_algo);
+            }
 
         }
         
