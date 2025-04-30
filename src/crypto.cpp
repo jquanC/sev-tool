@@ -1144,10 +1144,10 @@ static bool sm2sa_sign(sev_sig *sig, EVP_PKEY **priv_evp_key,
             //BN_bn2binpad() also converts the absolute value of a into big-endian form and stores it at to. tolen indicates the length of the output buffer to. The result is padded with zeros if necessary. If tolen is less than BN_num_bytes(a) an error is returned.
             //从文档来看，里是用 sig->ecdsa.r 576 没错
         if (
-            // !BN_bn2binpad(r, sig->ecdsa.r, 32) ||
-            // !BN_bn2binpad(s, sig->ecdsa.s, 32)
-            !BN_bn2lebinpad(r, sig->ecdsa.r, sizeof(sev_ecdsa_sig::r)) ||
-            !BN_bn2lebinpad(s, sig->ecdsa.s, sizeof(sev_ecdsa_sig::s))
+            !BN_bn2binpad(r, sig->ecdsa.r, 32) ||
+            !BN_bn2binpad(s, sig->ecdsa.s, 32)
+            // !BN_bn2lebinpad(r, sig->ecdsa.r, sizeof(sev_ecdsa_sig::r)) ||
+            // !BN_bn2lebinpad(s, sig->ecdsa.s, sizeof(sev_ecdsa_sig::s))
             ) {
             printf("Error: BN_bn2binpad failed\n");
             break;
@@ -1367,12 +1367,10 @@ bool sm2sa_verify(sev_sig *sig, EVP_PKEY **pub_evp_key, const uint8_t *msg, size
         }
 
         // extrac signature from sig, then turn into ECDSA_SIG and further turn into  DER format
-        r = BN_lebin2bn(sig->ecdsa.r, sizeof(sig->ecdsa.r),NULL);
-        s = BN_lebin2bn(sig->ecdsa.s, sizeof(sig->ecdsa.s),NULL);  
         // r = BN_lebin2bn(sig->ecdsa.r, sizeof(sig->ecdsa.r),NULL);
-        // s = BN_lebin2bn(sig->ecdsa.s, sizeof(sig->ecdsa.s),NULL);
-        // r = BN_bin2bn(sig->ecdsa.r, 32,NULL);
-        // s = BN_bin2bn(sig->ecdsa.s, 32,NULL);
+        // s = BN_lebin2bn(sig->ecdsa.s, sizeof(sig->ecdsa.s),NULL);  
+        r = BN_bin2bn(sig->ecdsa.r, 32,NULL);
+        s = BN_bin2bn(sig->ecdsa.s, 32,NULL);
         if(r==NULL || s==NULL){
             printf("Error: BN_bin2bn failed\n");
             break;
