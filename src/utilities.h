@@ -18,6 +18,7 @@
 #define UTILITIES_H
 
 #include <string>
+#include <cstdint>
 
 namespace sev
 {

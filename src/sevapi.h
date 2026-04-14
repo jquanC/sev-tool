@@ -344,6 +344,7 @@ typedef enum __attribute__((mode(QI))) SEV_EC
     SEV_EC_INVALID = 0,
     SEV_EC_P256    = 1,
     SEV_EC_P384    = 2,
+    CSV_EC_SM2_256 = 3,
 } SEV_EC;
 
 // Appendix C.3.2: Public Key Formats - ECDSA Public Key
@@ -377,8 +378,44 @@ typedef struct __attribute__ ((__packed__)) sev_ecdh_pub_key_t
     uint32_t    curve;      // SEV_EC as a uint32_t
     uint8_t     qx[SEV_ECDH_PUB_KEY_MAX_BITS/8];
     uint8_t     qy[SEV_ECDH_PUB_KEY_MAX_BITS/8];
-    uint8_t     rmbz[SEV_PUB_KEY_SIZE-2*SEV_ECDH_PUB_KEY_MAX_BITS/8-sizeof(uint32_t)];
+    uint8_t     rmbz[SEV_PUB_KEY_SIZE-2*SEV_ECDH_PUB_KEY_MAX_BITS/8-sizeof(uint32_t)];//rmbz: reserved must be zero
 } sev_ecdh_pub_key;
+
+// Appendix C.3.3: Public Key Formats - ECDH Public Key
+/**
+ * SEV Elliptical Curve Diffie Hellman Public Key details.
+ *
+ * @curve - The SEV Elliptical curve ID.
+ * @qx    - x component of the public point Q.
+ * @qy    - y component of the public point Q.
+ * @rmbz  - RESERVED. Must be zero!
+ */
+typedef struct __attribute__ ((__packed__)) csv_sm2sa_pub_key_t
+{
+    uint32_t    curve;      // SEV_EC as a uint32_t
+    uint8_t     qx[SEV_ECDH_PUB_KEY_MAX_BITS/8];
+    uint8_t     qy[SEV_ECDH_PUB_KEY_MAX_BITS/8];
+    uint8_t     user_id[2048/8];//Obviously, array always follows 'big-endian' format
+    uint8_t     rmbz[SEV_PUB_KEY_SIZE-2*SEV_ECDH_PUB_KEY_MAX_BITS/8-sizeof(uint32_t)-2048/8];//rmbz: reserved must be zero
+} csv_sm2sa_pub_key;
+
+// Appendix C.3.3: Public Key Formats - ECDH Public Key
+/**
+ * SEV Elliptical Curve Diffie Hellman Public Key details.
+ *
+ * @curve - The SEV Elliptical curve ID.
+ * @qx    - x component of the public point Q.
+ * @qy    - y component of the public point Q.
+ * @rmbz  - RESERVED. Must be zero!
+ */
+typedef struct __attribute__ ((__packed__)) csv_sm2dh_pub_key_t
+{
+    uint32_t    curve;      // SEV_EC as a uint32_t
+    uint8_t     qx[SEV_ECDH_PUB_KEY_MAX_BITS/8];
+    uint8_t     qy[SEV_ECDH_PUB_KEY_MAX_BITS/8];
+    uint8_t     user_id[2048/8];//Obviously, array always follows 'big-endian' format
+    uint8_t     rmbz[SEV_PUB_KEY_SIZE-2*SEV_ECDH_PUB_KEY_MAX_BITS/8-sizeof(uint32_t)-2048/8];//rmbz: reserved 
+} csv_sm2dh_pub_key;
 
 // Appendix C.4: Public Key Formats
 /**
@@ -389,6 +426,8 @@ typedef union
     sev_rsa_pub_key     rsa;
     sev_ecdsa_pub_key   ecdsa;
     sev_ecdh_pub_key    ecdh;
+    csv_sm2sa_pub_key   sm2sa;
+    csv_sm2dh_pub_key   sm2dh;
 } sev_pubkey;
 
 // Appendix C.4: Signature Formats
@@ -418,6 +457,7 @@ typedef struct __attribute__ ((__packed__)) sev_rsa_sig_t
  * @s    - S component of the signature.
  * @rmbz - RESERVED. Must be zero!
  */
+ /* the definition is compile to sm2 dignature */
 typedef struct __attribute__ ((__packed__)) sev_ecdsa_sig_t
 {
     uint8_t     r[SEV_ECDSA_SIG_COMP_MAX_BITS/8];
@@ -459,6 +499,8 @@ typedef enum __attribute__((mode(HI))) SEV_SIG_ALGO
     SEV_SIG_ALGO_RSA_SHA256   = 0x1,
     SEV_SIG_ALGO_ECDSA_SHA256 = 0x2,
     SEV_SIG_ALGO_ECDH_SHA256  = 0x3,
+    SIG_ALGO_TYPE_SM2_SA  = 0x4,
+    SIG_ALGO_TYPE_SM2_DH  = 0x5,
     SEV_SIG_ALGO_RSA_SHA384   = 0x101,
     SEV_SIG_ALGO_ECDSA_SHA384 = 0x102,
     SEV_SIG_ALGO_ECDH_SHA384  = 0x103,

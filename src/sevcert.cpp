@@ -16,12 +16,16 @@
 
 #include "crypto.h"
 #include "sevcert.h"
+#include "sevapi.h"
 #include "utilities.h"
+#include <cstddef>
+#include <cstdint>
 #include <openssl/bn.h>
 #include <openssl/ec.h>
 #include <openssl/ecdh.h>
 #include <openssl/ecdsa.h>
 #include <openssl/hmac.h>
+#include <openssl/objects.h>
 #include <openssl/pem.h>
 #include <openssl/rsa.h>
 #include <cstring>      // memset
@@ -283,6 +287,20 @@ bool write_priv_key_pem(const std::string file_name, EVP_PKEY *evp_key_pair)
     return true;
 }
 
+bool write_priv_key_pem_csv(const std::string file_name, EVP_PKEY *evp_key_pair)
+{
+    FILE *pFile = NULL;
+    pFile = fopen(file_name.c_str(), "wt");
+    if (!pFile)
+        return false;
+
+    // printf("Writing to file: %s\n", file_name.c_str());
+    int ret = PEM_write_PKCS8PrivateKey(
+        pFile, evp_key_pair, NULL, NULL, 0, NULL, NULL);
+    fclose(pFile);
+    return ret == 1;
+}
+
 /**
  * Description:   Populates an empty sev_cert using an existing ecdh keypair
  * Typical Usage: Used to generate the Guest Owner Diffie-Hellman cert used in
@@ -335,6 +353,199 @@ bool SEVCert::create_godh_cert(EVP_PKEY **godh_key_pair, uint8_t api_major,
     return cmd_ret;
 }
 
+bool SEVCert::create_pdh_cert(EVP_PKEY **pdh_key_pair, EVP_PKEY **pek_key_pair,uint8_t api_major,
+                               uint8_t api_minor)
+{
+    bool cmd_ret = false;
+    
+        if (!pdh_key_pair || !pek_key_pair)
+            return false;
+    
+        do {
+            memset(m_child_cert, 0, sizeof(sev_cert));
+    
+            m_child_cert->version = SEV_CERT_MAX_VERSION;
+            m_child_cert->api_major = api_major;
+            m_child_cert->api_minor = api_minor;
+            m_child_cert->pub_key_usage = SEV_USAGE_PDH;
+            m_child_cert->pub_key_algo = SEV_SIG_ALGO_ECDH_SHA256;
+            m_child_cert->sig_1_usage = SEV_USAGE_PEK;
+            m_child_cert->sig_1_algo = SEV_SIG_ALGO_ECDSA_SHA256;
+            m_child_cert->sig_2_usage = SEV_USAGE_INVALID;
+            m_child_cert->sig_2_algo = SEV_SIG_ALGO_INVALID;
+    
+            // Set the pubkey portion of the cert
+            if (decompile_public_key_into_certificate(m_child_cert, *pdh_key_pair) != STATUS_SUCCESS)
+                break;
+    
+            /*
+            * Set the rest of the params and sign the signature with the newly
+            * generated GODH privkey
+            * Technically this step is not necessary, as the firmware doesn't
+            * validate the GODH signature
+            */
+            if (!sign_with_key(SEV_CERT_MAX_VERSION, SEV_USAGE_PDH, SEV_SIG_ALGO_ECDH_SHA256,
+                            pek_key_pair, SEV_USAGE_PEK, SEV_SIG_ALGO_ECDSA_SHA256))
+                break;
+    
+            cmd_ret = true;
+        } while (0);
+    
+        return cmd_ret;
+}
+/* 
+api_major:1
+api_minor:2
+ */
+bool SEVCert::create_pdh_cert_csv(EVP_PKEY **pdh_key_pair, EVP_PKEY **pek_key_pair,uint8_t api_major,
+                               uint8_t api_minor)
+{
+    bool cmd_ret = false;
+    
+        if (!pdh_key_pair || !pek_key_pair)
+            return false;
+        
+        do {
+            memset(m_child_cert, 0, sizeof(sev_cert)); //entire cert have been set 0 in default
+    
+            m_child_cert->version = SEV_CERT_MAX_VERSION;
+            m_child_cert->api_major = 1;
+            m_child_cert->api_minor = 2;
+            m_child_cert->pub_key_usage = SEV_USAGE_PDH;
+            m_child_cert->pub_key_algo = SIG_ALGO_TYPE_SM2_DH;
+            m_child_cert->sig_1_usage = SEV_USAGE_PEK;
+            m_child_cert->sig_1_algo = SIG_ALGO_TYPE_SM2_SA;
+            m_child_cert->sig_2_usage = SEV_USAGE_INVALID;
+            m_child_cert->sig_2_algo = SEV_SIG_ALGO_INVALID;
+            //check: have to set the default user-id for each type of certs
+            static const uint8_t pdh_user_id_init[] = {
+                0x0D, 0x00, 0x48, 0x59, 0x47, 0x4F, 0x4E, 0x2D, \
+                0x53, 0x53, 0x44, 0x2D, 0x50, 0x44, 0x48, 0x00
+            };
+            //obtain the length
+            size_t pdh_userid_len = (size_t)pdh_user_id_init[0] | ((size_t)pdh_user_id_init[1]<<8);
+            printf("pdh_userid_len: %zu\n",pdh_userid_len);
+
+            //decompile into cert should keep magic number
+            std::memcpy(m_child_cert->pub_key.sm2dh.user_id, pdh_user_id_init,sizeof(pdh_user_id_init));
+        
+    
+            // Set the pubkey portion of the cert
+            if (decompile_public_key_into_certificate_csv(m_child_cert, *pdh_key_pair) != STATUS_SUCCESS)
+                break;
+    
+            /*
+            * sign_with_key is an unify function for sev and csv
+            * Set the rest of the params and sign the signature with the newly
+            * generated  privkey
+            * Technically this step is not necessary, as the firmware doesn't
+            * validate the GODH signature
+            */
+            if (!sign_with_key(SEV_CERT_MAX_VERSION, SEV_USAGE_PDH, SIG_ALGO_TYPE_SM2_DH,
+                            pek_key_pair, SEV_USAGE_PEK, SIG_ALGO_TYPE_SM2_SA))
+                break;
+    
+            cmd_ret = true;
+        } while (0);
+    
+        return cmd_ret;
+}
+
+/**
+ * Description:   Populates an empty pek using an existing OCA keypair
+ * Typical Usage: Used to generate the migration helper PEK keypair and certs;
+ * Parameters:    [pek_key_pair] used to populate the cert and future signed the pdh cert
+ *                [oca_key_pair] the input pub/priv key pair used to signed the pek cert
+ *                [algo] the algorithm with which to create the pubkey and
+ *                  signature, ECDSA or RSA, and SHA256 or SHA384
+ */
+bool SEVCert::create_pek_cert(EVP_PKEY **pek_key_pair, EVP_PKEY **oca_key_pair,uint8_t api_major,
+                               uint8_t api_minor,SEV_SIG_ALGO algo){
+    bool cmd_ret = false;
+    if(!pek_key_pair || !oca_key_pair)
+        return false;
+
+    do{
+        memset(m_child_cert, 0 , sizeof(sev_cert));
+
+        m_child_cert->version = SEV_CERT_MAX_VERSION;
+        m_child_cert->api_major = api_major;
+        m_child_cert->api_minor = api_minor;
+
+        m_child_cert->pub_key_usage = SEV_USAGE_PEK;
+        m_child_cert->pub_key_algo = algo;
+        //check inserted-platform's pek cert, OCA signature is located in sig_1
+        m_child_cert->sig_1_usage = SEV_USAGE_OCA;
+        m_child_cert->sig_1_algo = algo;
+
+        m_child_cert->sig_2_usage = SEV_USAGE_INVALID;
+        m_child_cert->sig_2_algo = SEV_SIG_ALGO_INVALID;
+
+        //set the pubkey portion of the cert
+        if(decompile_public_key_into_certificate(m_child_cert, *pek_key_pair) != STATUS_SUCCESS)
+            break;
+            
+        //set the rest of the params and sign the signature with the newly generated OCA privkey
+        if(!sign_with_key(SEV_CERT_MAX_VERSION, SEV_USAGE_PEK, algo, oca_key_pair, SEV_USAGE_OCA, SEV_SIG_ALGO_ECDSA_SHA256))
+            break;
+        
+        cmd_ret = true;
+
+    }while(0);
+    return cmd_ret;
+}
+
+/*  m_child_cert->api_major = 1;
+    m_child_cert->api_minor = 2;
+     */
+bool SEVCert::create_pek_cert_csv(EVP_PKEY **pek_key_pair, EVP_PKEY **oca_key_pair,uint8_t api_major,
+                               uint8_t api_minor,SEV_SIG_ALGO algo){
+    bool cmd_ret = false;
+    if(!pek_key_pair || !oca_key_pair)
+        return false;
+
+    do{
+        memset(m_child_cert, 0 , sizeof(sev_cert));
+
+        m_child_cert->version = SEV_CERT_MAX_VERSION;
+        m_child_cert->api_major = 1;
+        m_child_cert->api_minor = 2;
+
+        m_child_cert->pub_key_usage = SEV_USAGE_PEK;
+        m_child_cert->pub_key_algo = algo;
+        //check inserted-platform's pek cert, OCA signature is located in sig_1
+        m_child_cert->sig_1_usage = SEV_USAGE_OCA;
+        m_child_cert->sig_1_algo = algo;
+
+        m_child_cert->sig_2_usage = SEV_USAGE_INVALID;
+        m_child_cert->sig_2_algo = SEV_SIG_ALGO_INVALID;
+
+        //check: have to set the default user-id for each type of certs
+            static const uint8_t pek_user_id_init[] = {
+                0x0D, 0x00, 0x48, 0x59, 0x47, 0x4F, 0x4E, 0x2D, \
+                0x53, 0x53 ,0x44, 0x2D, 0x50, 0x45, 0x4B, 0x00
+            };
+            //obtain the length
+            size_t pek_userid_len = (size_t)pek_user_id_init[0] | ((size_t)pek_user_id_init[1]<<8);
+            printf("pek_userid_len: %zu\n",pek_userid_len);
+
+            //decompile into cert should keep magic number
+            std::memcpy(m_child_cert->pub_key.sm2sa.user_id, pek_user_id_init, sizeof(pek_user_id_init));
+
+        //set the pubkey portion of the cert
+        if(decompile_public_key_into_certificate_csv(m_child_cert, *pek_key_pair) != STATUS_SUCCESS)
+            break;
+            
+        //set the rest of the params and sign the signature with the newly generated OCA privkey
+        if(!sign_with_key(SEV_CERT_MAX_VERSION, SEV_USAGE_PEK, algo, oca_key_pair, SEV_USAGE_OCA, SIG_ALGO_TYPE_SM2_SA))
+            break;
+        
+        cmd_ret = true;
+
+    }while(0);
+    return cmd_ret;
+}
+
 /**
  * Description:   Populates an empty sev_cert using an existing ECDH keypair
  * Typical Usage: Used to generate the Guest Owner Diffie-Hellman cert used in
@@ -355,8 +566,8 @@ bool SEVCert::create_oca_cert(EVP_PKEY **oca_key_pair, SEV_SIG_ALGO algo)
         memset(m_child_cert, 0, sizeof(sev_cert));
 
         m_child_cert->version = SEV_CERT_MAX_VERSION;
-        m_child_cert->api_major = 0;
-        m_child_cert->api_minor = 0;
+        m_child_cert->api_major = 0; //ori 0, change back
+        m_child_cert->api_minor = 0; //ori 0, change back
         m_child_cert->pub_key_usage = SEV_USAGE_OCA;
         m_child_cert->pub_key_algo = algo;
         m_child_cert->sig_1_usage = SEV_USAGE_OCA;
@@ -373,6 +584,63 @@ bool SEVCert::create_oca_cert(EVP_PKEY **oca_key_pair, SEV_SIG_ALGO algo)
          * generated GODH privkey
          * Technically this step is not necessary, as the firmware doesn't
          * validate the GODH signature
+         */
+        if (!sign_with_key(SEV_CERT_MAX_VERSION, SEV_USAGE_OCA, algo,
+                        oca_key_pair, SEV_USAGE_OCA, algo))
+            break;
+
+        cmd_ret = true;
+    } while (0);
+
+    return cmd_ret;
+}
+
+bool SEVCert::create_oca_cert_csv(EVP_PKEY **oca_key_pair, SEV_SIG_ALGO algo)
+{
+    bool cmd_ret = false;
+
+    if (!oca_key_pair)
+        return false;
+
+    do {
+        memset(m_child_cert, 0, sizeof(sev_cert));
+
+        m_child_cert->version = SEV_CERT_MAX_VERSION;
+        m_child_cert->api_major = 1; //ori 0, change back
+        m_child_cert->api_minor = 2; //ori 0, change back
+        m_child_cert->pub_key_usage = SEV_USAGE_OCA;
+        m_child_cert->pub_key_algo = algo;
+        m_child_cert->sig_1_usage = SEV_USAGE_OCA;
+        m_child_cert->sig_1_algo = algo;         // OCA is self-signed (sig algo is algo from OCA's keypair)
+        m_child_cert->sig_2_usage = SEV_USAGE_INVALID;
+        m_child_cert->sig_2_algo = SEV_SIG_ALGO_INVALID;
+
+        //first two bytes is the valid length of the user_id
+            static const uint8_t oca_user_id_init[] = {
+                0x0B, 0x00, 0x4F, 0x43, 0x41, 0x5F, 0x55, 0x53, \
+                0x45, 0x52, 0x5F, 0x49, 0x44, 0x00, 0x00, 0x00
+            };
+
+            //obtain the length further usage
+            size_t oca_userid_len = (size_t)oca_user_id_init[0] | ((size_t)oca_user_id_init[1]<<8);
+            printf("oca_userid_len: %zu\n",oca_userid_len);
+
+            //decompile into the cert, should keep magic number
+            std::memcpy(m_child_cert->pub_key.sm2sa.user_id, oca_user_id_init, sizeof(oca_user_id_init));
+
+        // Set the pubkey portion of the cert
+        if (decompile_public_key_into_certificate_csv(m_child_cert, *oca_key_pair) != STATUS_SUCCESS)
+            break;
+
+        //will verify the signature at the same time
+        /* The flow of sign_with_key
+        sign_with_key
+            //process user_id pointer; cal. the length of user_id from magic bytes here
+            >sign_message_csv
+                >sign_verify_message_csv
+                    >sm2sa_sign
+                    >sm2sa_verify //will do verify here
+        
          */
         if (!sign_with_key(SEV_CERT_MAX_VERSION, SEV_USAGE_OCA, algo,
                         oca_key_pair, SEV_USAGE_OCA, algo))
@@ -405,6 +673,22 @@ bool SEVCert::create_oca_cert(EVP_PKEY **oca_key_pair, SEV_SIG_ALGO algo)
  * and all other params later (don't know what other params it needed to validate
  * correctly)
  */
+
+void print_bytes_arr(uint8_t* arr, size_t len){
+    for(int i=0;i < len;i++){
+            if(i % 16 == 0){
+                printf("%08x:",i);
+            }
+            printf("%02x", arr[i]);
+            if((i+1)%16 == 0 || i == len - 1){
+                printf("\n");
+            }else{
+                printf(" ");
+            }
+        }
+    printf("\n");
+}
+
 bool SEVCert::sign_with_key(uint32_t version, uint32_t pub_key_usage,
                             uint32_t pub_key_algo, EVP_PKEY **priv_evp_key,
                             uint32_t sig_1_usage, SEV_SIG_ALGO sig_1_algo)
@@ -421,7 +705,60 @@ bool SEVCert::sign_with_key(uint32_t version, uint32_t pub_key_usage,
 
     // SHA256/SHA384 hash the cert from the [version:pub_key] params
     uint32_t pub_key_offset = offsetof(sev_cert, sig_1_usage);  // 16 + sizeof(sev_pubkey)
-    return sign_message(&m_child_cert->sig_1, priv_evp_key, (uint8_t *)m_child_cert, pub_key_offset, sig_1_algo);
+    if(sig_1_algo == SEV_SIG_ALGO_ECDH_SHA256 || 
+       sig_1_algo == SEV_SIG_ALGO_ECDH_SHA384  ||
+       sig_1_algo == SEV_SIG_ALGO_ECDSA_SHA256 ||
+       sig_1_algo == SEV_SIG_ALGO_ECDSA_SHA384)
+    {
+        return sign_message(&m_child_cert->sig_1, priv_evp_key, (uint8_t *)m_child_cert, pub_key_offset, sig_1_algo);
+    }else //sig_1_algo == SIG_ALGO_TYPE_SM2_SA || sig_1_algo == SIG_ALGO_TYPE_SM2_DH holds
+    {   
+       
+        
+        if(pub_key_usage == SIG_ALGO_TYPE_SM2_DH){
+
+            //process user_id here
+            //obtain the length
+            size_t cert_userid_len = (size_t)m_child_cert->pub_key.sm2dh.user_id[0] | ((size_t)m_child_cert->pub_key.sm2dh.user_id[1]<<8);
+
+            // cert_userid_len+=2;
+            printf("this_cert_userid_len: %zu\n",cert_userid_len);
+
+            uint8_t * used_user_id_buff = (uint8_t*) malloc(cert_userid_len);
+            // memcpy(used_user_id_buff, m_child_cert->pub_key.sm2dh.user_id+1 ,1);
+            // memcpy(used_user_id_buff+1, m_child_cert->pub_key.sm2dh.user_id ,1);
+            memcpy(used_user_id_buff, m_child_cert->pub_key.sm2dh.user_id+2 ,cert_userid_len);
+            printf("the following is the user_id used for signature\n");
+            print_bytes_arr(used_user_id_buff, cert_userid_len);
+            printf("user-id sting %s\n",used_user_id_buff);
+
+            // return sign_message_csv(&m_child_cert->sig_1, priv_evp_key, (uint8_t *)m_child_cert, pub_key_offset, m_child_cert->pub_key.sm2dh.user_id, cert_userid_len,sig_1_algo);
+            return sign_message_csv(&m_child_cert->sig_1, priv_evp_key, (uint8_t *)m_child_cert, pub_key_offset, used_user_id_buff, cert_userid_len,sig_1_algo);
+
+        }else{ 
+             //pub_key_usage == SIG_ALGO_TYPE_SM2_SA
+             //process user_id here
+            //obtain the length
+            size_t cert_userid_len = (size_t)m_child_cert->pub_key.sm2sa.user_id[0] | ((size_t)m_child_cert->pub_key.sm2sa.user_id[1]<<8);
+
+            // cert_userid_len +=2;
+            printf("this_cert_userid_len: %zu\n",cert_userid_len);
+
+            uint8_t * used_user_id_buff = (uint8_t*) malloc(cert_userid_len);
+            // memcpy(used_user_id_buff, m_child_cert->pub_key.sm2sa.user_id+1 ,1);
+            // memcpy(used_user_id_buff+1, m_child_cert->pub_key.sm2sa.user_id ,1);
+            memcpy(used_user_id_buff, m_child_cert->pub_key.sm2sa.user_id+2 ,cert_userid_len);
+            printf("the following is the user_id used for signature\n");
+            print_bytes_arr(used_user_id_buff, cert_userid_len);
+            printf("user-id sting %s\n",used_user_id_buff);
+            
+            
+            // return sign_message_csv(&m_child_cert->sig_1, priv_evp_key, (uint8_t *)m_child_cert, pub_key_offset, m_child_cert->pub_key.sm2sa.user_id, cert_userid_len,sig_1_algo);
+            return sign_message_csv(&m_child_cert->sig_1, priv_evp_key, (uint8_t *)m_child_cert, pub_key_offset, used_user_id_buff, cert_userid_len,sig_1_algo);
+
+        }
+        
+    }
 }
 
 /**
@@ -498,7 +835,9 @@ SEV_ERROR_CODE SEVCert::validate_public_key(const sev_cert *cert, const EVP_PKEY
         else if ((cert->pub_key_algo == SEV_SIG_ALGO_ECDSA_SHA256) ||
                  (cert->pub_key_algo == SEV_SIG_ALGO_ECDSA_SHA384) ||
                  (cert->pub_key_algo == SEV_SIG_ALGO_ECDH_SHA256)  ||
-                 (cert->pub_key_algo == SEV_SIG_ALGO_ECDH_SHA384))
+                 (cert->pub_key_algo == SEV_SIG_ALGO_ECDH_SHA384)  ||
+                 (cert->pub_key_algo == SIG_ALGO_TYPE_SM2_SA)      ||
+                 (cert->pub_key_algo == SIG_ALGO_TYPE_SM2_DH))
             ;       // Are no invalid values for these cert types
         else
             break;
@@ -554,6 +893,11 @@ SEV_ERROR_CODE SEVCert::validate_signature(const sev_cert *child_cert,
             sha_digest = sha_digest_384;
             sha_length = sizeof(hmac_sha_512);
         }
+        else if (parent_cert->pub_key_algo == SIG_ALGO_TYPE_SM2_SA){
+            sha_type = SHA_TYPE_SM3;
+            sha_digest = sha_digest_256;
+            sha_length = sizeof(hmac_sha_256);
+        }
         else
         {
             break;
@@ -563,9 +907,23 @@ SEV_ERROR_CODE SEVCert::validate_signature(const sev_cert *child_cert,
         // Calculate the digest of the input message   rsa.c -> rsa_pss_verify_msg()
         // SHA256/SHA384 hash the cert from the [Version:pub_key] params
         uint32_t pub_key_offset = offsetof(sev_cert, sig_1_usage);  // 16 + sizeof(SEV_PUBKEY)
-        if (!digest_sha((uint8_t *)child_cert, pub_key_offset, sha_digest, sha_length, sha_type)) {
-            break;
+
+        if((parent_cert->pub_key_algo == SEV_SIG_ALGO_RSA_SHA256) ||
+            (parent_cert->pub_key_algo == SEV_SIG_ALGO_RSA_SHA384)||
+            (parent_cert->pub_key_algo == SEV_SIG_ALGO_ECDSA_SHA256) ||
+            (parent_cert->pub_key_algo == SEV_SIG_ALGO_ECDSA_SHA384) ||
+            (parent_cert->pub_key_algo == SEV_SIG_ALGO_ECDH_SHA256)  ||
+            (parent_cert->pub_key_algo == SEV_SIG_ALGO_ECDH_SHA384)){
+                if (!digest_sha((uint8_t *)child_cert, pub_key_offset, sha_digest, sha_length, sha_type)) 
+                {
+                    break;
+                }
+            }
+        else if((parent_cert->pub_key_algo == SIG_ALGO_TYPE_SM2_SA)||
+                (parent_cert->pub_key_algo == SIG_ALGO_TYPE_SM2_DH)){
+                ;//do nothing， don't need to calculate the hash in advance
         }
+
 
         // 2. Use the pub_key in sig[i] arg to decrypt the sig in child_cert arg
         // Try both sigs in child_cert, to see if either of them match. In PEK, CEK and OCA can be in any order
@@ -640,6 +998,50 @@ SEV_ERROR_CODE SEVCert::validate_signature(const sev_cert *child_cert,
                 EC_KEY_free(tmp_ec_key);
                 ECDSA_SIG_free(tmp_ecdsa_sig);      // Frees BIGNUMs too
                 break;
+            }else if((parent_cert->pub_key_algo == SIG_ALGO_TYPE_SM2_SA)){
+
+                sev_sig tsev_sig = cert_sig[i];
+                if(child_cert->pub_key_algo == SIG_ALGO_TYPE_SM2_DH ){
+                    //process user_id here
+                    //obtain the length
+                    size_t cert_userid_len = (size_t)child_cert->pub_key.sm2dh.user_id[0] | ((size_t)child_cert->pub_key.sm2dh.user_id[1]<<8);
+
+                    // cert_userid_len+=2;
+                    printf("this_cert_userid_len: %zu\n",cert_userid_len);
+
+                    uint8_t * used_user_id_buff = (uint8_t*) malloc(cert_userid_len);
+                    // memcpy(used_user_id_buff, child_cert->pub_key.sm2dh.user_id+1 ,1);
+                    // memcpy(used_user_id_buff+1, child_cert->pub_key.sm2dh.user_id ,1);
+                    memcpy(used_user_id_buff, child_cert->pub_key.sm2dh.user_id+2 ,cert_userid_len);
+
+                    // if(!sm2sa_verify(&tsev_sig, &parent_signing_key,(uint8_t *)child_cert,pub_key_offset,child_cert->pub_key.sm2dh.user_id,cert_userid_len) )
+                    if(!sm2sa_verify(&tsev_sig, &parent_signing_key,(uint8_t *)child_cert,pub_key_offset,used_user_id_buff,cert_userid_len) )
+                    {
+                    continue;
+                    }
+                }else
+                { //child_cert->pub_key_algo == SIG_ALGO_TYPE_SM2_SA
+                    //process user_id here
+                    //obtain the length
+                    size_t cert_userid_len = (size_t)child_cert->pub_key.sm2sa.user_id[0] | ((size_t)child_cert->pub_key.sm2sa.user_id[1]<<8);
+
+                    // cert_userid_len+=2;
+                    printf("this_cert_userid_len: %zu\n",cert_userid_len);
+
+                    uint8_t * used_user_id_buff = (uint8_t*) malloc(cert_userid_len);
+                    // memcpy(used_user_id_buff, child_cert->pub_key.sm2sa.user_id+1 ,1);
+                    // memcpy(used_user_id_buff+1, child_cert->pub_key.sm2sa.user_id ,1);
+                    memcpy(used_user_id_buff, child_cert->pub_key.sm2sa.user_id+2 ,cert_userid_len);
+
+                    if(!sm2sa_verify(&tsev_sig, &parent_signing_key,(uint8_t *)child_cert,pub_key_offset,used_user_id_buff,cert_userid_len)){
+                    continue;
+                    }
+                }
+                found_match = true;
+                /*we input one parent_signing_key, and there are two signatures on the child_cert; 
+                beacure found one match is enoutgh, so can directly break out；
+                 */
+                break;
             }
             else {       // Bad/unsupported signing key algorithm
                 printf("Unexpected algorithm! %x\n", parent_cert->pub_key_algo);
@@ -655,6 +1057,7 @@ SEV_ERROR_CODE SEVCert::validate_signature(const sev_cert *child_cert,
         // 2. sig usage and parent key usage match
         if ((cert_sig_algo[i] != parent_cert->pub_key_algo) ||
            (cert_sig_usage[i] != parent_cert->pub_key_usage)) {
+            printf("Validation of Sig-algo or usage doesn't match\n");
                break;
         }
         cmd_ret = STATUS_SUCCESS;
@@ -688,9 +1091,10 @@ SEV_ERROR_CODE SEVCert::validate_body(const sev_cert *cert)
 }
 
 /**
+ * updated: support for SM2  
  * Description: When a .cert file is imported, the PubKey is in sev_cert
  *              format. This function converts that format into a EVP_PKEY
- *              format where it can be used by other openssl functions.
+ *              format where it can be used by other openssl functions. 
  * Note:        This function NEWs/allocates memory for a EC_KEY that must be
  *              freed in the calling function using EC_KEY_free()
  * Parameters:  [cert] is the source sev_cert containing the public key we want
@@ -742,7 +1146,9 @@ SEV_ERROR_CODE SEVCert::compile_public_key_from_certificate(const sev_cert *cert
         else if ((cert->pub_key_algo == SEV_SIG_ALGO_ECDSA_SHA256) ||
                  (cert->pub_key_algo == SEV_SIG_ALGO_ECDSA_SHA384) ||
                  (cert->pub_key_algo == SEV_SIG_ALGO_ECDH_SHA256)  ||
-                 (cert->pub_key_algo == SEV_SIG_ALGO_ECDH_SHA384) ) {      // ecdsa.c -> sign_verify_msg
+                 (cert->pub_key_algo == SEV_SIG_ALGO_ECDH_SHA384)  ||
+                 (cert->pub_key_algo == SIG_ALGO_TYPE_SM2_DH) ||
+                 (cert->pub_key_algo == SIG_ALGO_TYPE_SM2_SA)) {      // ecdsa.c -> sign_verify_msg
 
             // Store the x and y components as separate BIGNUM objects. The values in the
             // SEV certificate are little-endian, must reverse bytes before storing in BIGNUM
@@ -755,10 +1161,20 @@ SEV_ERROR_CODE SEVCert::compile_public_key_from_certificate(const sev_cert *cert
                     (cert->pub_key_algo == SEV_SIG_ALGO_ECDH_SHA384)) {
                 x_big_num = BN_lebin2bn(cert->pub_key.ecdh.qx, sizeof(cert->pub_key.ecdh.qx), NULL);  // New's up BigNum
                 y_big_num = BN_lebin2bn(cert->pub_key.ecdh.qy, sizeof(cert->pub_key.ecdh.qy), NULL);
+            }else if((cert->pub_key_algo == SIG_ALGO_TYPE_SM2_DH)){
+                x_big_num = BN_lebin2bn(cert->pub_key.sm2dh.qx, sizeof(cert->pub_key.sm2dh.qx), NULL);  // New's up BigNum
+                y_big_num = BN_lebin2bn(cert->pub_key.sm2dh.qy, sizeof(cert->pub_key.sm2dh.qy), NULL);
+            }else if((cert->pub_key_algo == SIG_ALGO_TYPE_SM2_SA)){
+                x_big_num = BN_lebin2bn(cert->pub_key.sm2sa.qx, sizeof(cert->pub_key.sm2sa.qx), NULL);  // New's up BigNum
+                y_big_num = BN_lebin2bn(cert->pub_key.sm2sa.qy, sizeof(cert->pub_key.sm2sa.qy), NULL);
             }
-
-            int nid = EC_curve_nist2nid("P-384");   // NID_secp384r1
-
+            int nid = -1;
+            if((cert->pub_key_algo == SIG_ALGO_TYPE_SM2_DH) || (cert->pub_key_algo == SIG_ALGO_TYPE_SM2_SA)){
+                nid = OBJ_sn2nid("SM2");
+            }else{
+                nid = EC_curve_nist2nid("P-384"); // NID_secp384r1
+            }
+           
             // Create/allocate memory for an EC_KEY object using the NID above
             if (!(ec_pub_key = EC_KEY_new_by_curve_name(nid)))
                 break;
@@ -891,6 +1307,116 @@ SEV_ERROR_CODE SEVCert::decompile_public_key_into_certificate(sev_cert *cert, EV
 
     return cmd_ret;
 }
+/**
+ * Description: This function is the reverse of CompilePublicKeyFromCertificate,
+ *              in that is takes an EVP_PKEY and converts it to sev_cert format
+ * Note:        This function NEWs/allocates memory for a EC_KEY that must be
+ *              freed in the calling function using EC_KEY_free()
+ * Parameters:  [cert] is the output cert which the public key gets written to
+ *              [evp_pubkey] is the input public key
+ */
+SEV_ERROR_CODE SEVCert::decompile_public_key_into_certificate_csv(sev_cert *cert, EVP_PKEY *evp_pubkey)
+{
+    if (!cert)
+        return ERROR_INVALID_CERTIFICATE;
+
+    SEV_ERROR_CODE cmd_ret = ERROR_INVALID_CERTIFICATE;
+    EC_KEY *ec_pubkey = NULL;
+    RSA *rsa_pubkey = NULL;
+    const BIGNUM *exponent = NULL;
+    const BIGNUM *modulus = NULL;
+    BIGNUM *x_bignum = NULL;
+    BIGNUM *y_bignum = NULL;
+    EC_GROUP *ec_group = NULL;
+
+    do {
+        if ((cert->pub_key_algo == SEV_SIG_ALGO_RSA_SHA256) ||
+            (cert->pub_key_algo == SEV_SIG_ALGO_RSA_SHA384)) {
+            printf("Should never reach here, as we only support SM2 in using CSV\n");
+            break;
+
+            // Pull the RSA key from the EVP_PKEY
+            rsa_pubkey = EVP_PKEY_get1_RSA(evp_pubkey);
+            if (!rsa_pubkey)
+                break;
+
+            // Extract the exponent and modulus (RSA_get0_factors() would also work)
+            exponent = RSA_get0_e(rsa_pubkey);   // Exponent
+            modulus = RSA_get0_n(rsa_pubkey);    // Modulus
+
+            cert->pub_key.rsa.modulus_size = 4096;    // Bits
+            if (BN_bn2lebinpad(exponent, (unsigned char *)cert->pub_key.rsa.pub_exp, sizeof(cert->pub_key.rsa.pub_exp)) <= 0)
+                break;
+            if (BN_bn2lebinpad(modulus, (unsigned char *)cert->pub_key.rsa.modulus, sizeof(cert->pub_key.rsa.modulus)) <= 0)
+                break;
+        }
+        else if ((cert->pub_key_algo == SIG_ALGO_TYPE_SM2_DH) ||
+                 (cert->pub_key_algo == SIG_ALGO_TYPE_SM2_SA)) {      // ecdsa.c -> sign_verify_msg
+
+            // Pull the EC_KEY from the EVP_PKEY
+            ec_pubkey = EVP_PKEY_get1_EC_KEY(evp_pubkey);
+            
+            // Make sure the key is good
+            if (EC_KEY_check_key(ec_pubkey) != 1){
+                printf("EC_KEY_check_key faile.d, the key is not good\n");
+                break;
+            }
+                
+            // Get the group and nid of the curve
+            const EC_GROUP *ec_group = EC_KEY_get0_group(ec_pubkey);
+            if(!ec_group){
+                printf("EC_KEY_get0_group failed\n");
+                break;
+            }
+            int nid = EC_GROUP_get_curve_name(ec_group); //EVP_PKEY format contains the curve information, neither pubkey nor privkey
+
+
+            if(OBJ_sn2nid("SM2") == nid)
+            {
+                if(cert->pub_key_algo == SIG_ALGO_TYPE_SM2_DH)
+                    cert->pub_key.sm2dh.curve = CSV_EC_SM2_256;
+                else if(cert->pub_key_algo == SIG_ALGO_TYPE_SM2_SA)
+                    cert->pub_key.sm2sa.curve = CSV_EC_SM2_256;
+            }else{
+                printf("Map sm2 curve string (SM2) to nid failed\n");
+                break;
+            }
+
+            // Get the EC_POINT from the public key
+            const EC_POINT *pub = EC_KEY_get0_public_key(ec_pubkey);
+
+            // New up the BIGNUMs
+            x_bignum = BN_new();
+            y_bignum = BN_new();
+
+            // Get the x and y coordinates from the EC_POINT and store as separate BIGNUM objects
+            if (!EC_POINT_get_affine_coordinates_GFp(ec_group, pub, x_bignum, y_bignum, NULL))
+                break;
+
+            // Store the x and y components into the cert. The values in the
+            // BIGNUM are stored as big-endian, so must reverse bytes before
+            // storing in SEV certificate as little-endian
+            if (BN_bn2lebinpad(x_bignum, (unsigned char *)cert->pub_key.ecdh.qx, sizeof(cert->pub_key.ecdh.qx)) <= 0)
+                break;
+            if (BN_bn2lebinpad(y_bignum, (unsigned char *)cert->pub_key.ecdh.qy, sizeof(cert->pub_key.ecdh.qy)) <= 0)
+                break;
+        }
+
+        if (!evp_pubkey)
+            break;
+
+        cmd_ret = STATUS_SUCCESS;
+    } while (0);
+
+    // Free memory if it was allocated
+    BN_free(y_bignum);       // If NULL, does nothing
+    BN_free(x_bignum);
+    EC_GROUP_free(ec_group);
+    EC_KEY_free(ec_pubkey);
+    RSA_free(rsa_pubkey);
+
+    return cmd_ret;
+}
 
 /**
  * Description: Takes in a signed certificate and validates the signature(s)
@@ -903,8 +1429,11 @@ SEV_ERROR_CODE SEVCert::decompile_public_key_into_certificate(sev_cert *cert, EV
  */
 SEV_ERROR_CODE SEVCert::verify_sev_cert(const sev_cert *parent_cert1, const sev_cert *parent_cert2)
 {
-    if (!parent_cert1)
+    if (!parent_cert1){
+        printf("parent_cert1 is NULL\n");
         return ERROR_INVALID_CERTIFICATE;
+    }
+        
 
     SEV_ERROR_CODE cmd_ret = ERROR_INVALID_CERTIFICATE;
     EVP_PKEY *parent_pub_key[SEV_CERT_MAX_SIGNATURES] = {NULL};
@@ -916,36 +1445,49 @@ SEV_ERROR_CODE SEVCert::verify_sev_cert(const sev_cert *parent_cert1, const sev_
         int i = 0;
         for (i = 0; i < numSigs; i++) {
             // New up the EVP_PKEY
-            if (!(parent_pub_key[i] = EVP_PKEY_new()))
+            if (!(parent_pub_key[i] = EVP_PKEY_new())){
+                printf("EVP_PKEY_new failed\n");
                 break;
+            }
+                
 
             // This function allocates memory and attaches an EC_Key
             //  to your EVP_PKEY so, to prevent mem leaks, make sure
             //  the EVP_PKEY is freed at the end of this function
-            if (compile_public_key_from_certificate(parent_cert[i], parent_pub_key[i]) != STATUS_SUCCESS)
+            if (compile_public_key_from_certificate(parent_cert[i], parent_pub_key[i]) != STATUS_SUCCESS){
+                printf("compile_public_key_from_certificate failed\n");
                 break;
+            }
 
             // Now, we have Parent's PublicKey(s), validate them
-            if (validate_public_key(m_child_cert, parent_pub_key[i]) != STATUS_SUCCESS)
+            if (validate_public_key(m_child_cert, parent_pub_key[i]) != STATUS_SUCCESS){
+                printf("validate no.%d public key failed\n",i);
+                printf("validate_public_key failed\n");
                 break;
+            }
 
             // Validate the signature before we do any other checking
             // Sub-function will need a separate loop to find which of the 2 signatures this one matches to
-            if (validate_signature(m_child_cert, parent_cert[i], parent_pub_key[i]) != STATUS_SUCCESS)
+            if (validate_signature(m_child_cert, parent_cert[i], parent_pub_key[i]) != STATUS_SUCCESS){
+                printf("validate_signature failed\n");
                 break;
+            }
         }
         if (i != numSigs)
             break;
 
         // Validate the certificate body
-        if (validate_body(m_child_cert) != STATUS_SUCCESS)
+        if (validate_body(m_child_cert) != STATUS_SUCCESS){
+            printf("validate_body failed\n");
             break;
+        }
 
         // Although the signature was valid, ensure that the certificate
         // was signed with the proper key(s) in the correct order
         if (m_child_cert->pub_key_usage == SEV_USAGE_PDH) {
             // The PDH certificate must be signed by the PEK
             if (parent_cert1->pub_key_usage != SEV_USAGE_PEK) {
+                printf("PDH certificate must be signed by the PEK\n");
                 break;
             }
         }
@@ -958,19 +1500,22 @@ SEV_ERROR_CODE SEVCert::verify_sev_cert(const sev_cert *parent_cert1, const sev_
             if (((parent_cert1->pub_key_usage != SEV_USAGE_OCA) && (parent_cert2->pub_key_usage != SEV_USAGE_CEK)) &&
                 ((parent_cert1->pub_key_usage != SEV_USAGE_CEK) && (parent_cert2->pub_key_usage != SEV_USAGE_OCA)) &&
                 ((numSigs == 1) && (parent_cert1->pub_key_usage != SEV_USAGE_OCA)) &&
-                ((numSigs == 1) && (parent_cert2->pub_key_usage != SEV_USAGE_OCA)))  {
+                ((numSigs == 1) && (parent_cert2->pub_key_usage != SEV_USAGE_OCA))){
+                printf("PEK certificate must be signed by the OCA or CEK\n");
                 break;
             }
         }
         else if (m_child_cert->pub_key_usage == SEV_USAGE_OCA) {
             // The OCA certificate must be self-signed
             if (parent_cert1->pub_key_usage != SEV_USAGE_OCA) {
+                printf("OCA certificate must be self-signed\n");
                 break;
             }
         }
         else if (m_child_cert->pub_key_usage == SEV_USAGE_CEK) {
             // The CEK must be signed by the ASK
-            if (parent_cert1->pub_key_usage != SEV_USAGE_ASK) {
+            if (parent_cert1->pub_key_usage != SEV_USAGE_ASK) { //暂时不影响 csv 验证 (will not reach here)
+                printf("CEK certificate must be signed by the ASK\n");
                 break;
             }
         }
@@ -992,7 +1537,7 @@ SEV_ERROR_CODE SEVCert::validate_pek_csr()
 {
     if (m_child_cert->version        == 1                         &&
         m_child_cert->pub_key_usage  == SEV_USAGE_PEK             &&
-        m_child_cert->pub_key_algo   == SEV_SIG_ALGO_ECDSA_SHA256 &&
+        m_child_cert->pub_key_algo   == SEV_SIG_ALGO_ECDSA_SHA256 && //change back to against de45cc2c2f7998e078363c6127a0c340d8da4a30
         m_child_cert->sig_1_usage    == SEV_USAGE_INVALID         &&
         m_child_cert->sig_1_algo     == SEV_SIG_ALGO_INVALID      &&
         m_child_cert->sig_2_usage    == SEV_USAGE_INVALID         &&
@@ -1012,7 +1557,7 @@ SEV_ERROR_CODE SEVCert::verify_signed_pek_csr(const sev_cert *oca_cert)
     do {
         if (m_child_cert->version        != 1                         ||
             m_child_cert->pub_key_usage  != SEV_USAGE_PEK             ||
-            m_child_cert->pub_key_algo   != SEV_SIG_ALGO_ECDSA_SHA256 ||
+            m_child_cert->pub_key_algo   != SEV_SIG_ALGO_ECDSA_SHA256 || //change back against de45cc2c2f7998e078363c6127a0c340d8da4a30
             oca_cert->api_minor          != 0                         ||
             oca_cert->api_major          != 0                         ||
             oca_cert->version            != 1                         ||

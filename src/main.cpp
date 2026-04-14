@@ -17,6 +17,7 @@
 #include "commands.h"  // has measurement_t
 #include "tests.h"     // for test_all
 #include "utilities.h" // for str_to_array
+#include <bits/getopt_core.h>
 #include <getopt.h>    // for getopt_long
 #include <stdio.h>
 #include <string>
@@ -67,6 +68,9 @@ const char help_array[] =  "The following commands are supported:\n" \
                     "  validate_guest_report\n" \
                     "  validate_cert_chain_vcek\n" \
                     "  export_cert_chain_vcek\n" \
+                    "Migration Helper commands:\n" \
+                    "  mh_cert_key_gen\n" \
+                    "  mh_csv_cert_key_gen\n" \
                     ;
 
 /* Flag set by '--verbose' */
@@ -103,7 +107,9 @@ static struct option long_options[] =
     {"validate_attestation",     no_argument,       0, 'x'}, // SEV attestation command
     {"validate_guest_report",    no_argument,       0, 'y'}, // SNP GuestRequest ReportRequest
     {"validate_cert_chain_vcek", no_argument,       0, 'z'},
-
+    /* Migration Helper commands */
+    {"mh_cert_key_gen",no_argument,0,'M'},
+    {"mh_csv_cert_key_gen",no_argument,0,'N'},
     /* Run tests */
     {"test_all",             no_argument,       0, 'T'},
 
@@ -123,6 +129,7 @@ int main(int argc, char **argv)
 
     while ((c = getopt_long (argc, argv, "hio:", long_options, &option_index)) != -1)
     {
+        printf("reach switch\n", c);
         switch (c) {
             case 'h':           // help
             case 'H': {
@@ -310,6 +317,41 @@ int main(int argc, char **argv)
             case 'z': {         // VALIDATE_CERT_CHAIN_VCEK
                 Command cmd(output_folder, verbose_flag, CCP_NOT_REQ);
                 cmd_ret = cmd.validate_cert_chain_vcek();
+                break;
+            }
+            case 'M': {         // jquan: add new command for migration helper
+                Command cmd(output_folder, verbose_flag, CCP_NOT_REQ);
+                cmd_ret = cmd.mh_export_cert_key();
+                break;
+            }
+            case 'N': {         // jquan: add new command for migration helper
+                bool flag = false; // not need to gen new keys
+                // optind--;
+                printf("argc = %d, optind = %d\n", argc, optind);
+                printf("argv[0] = %s\n", argv[0]);
+                printf("argv[1] = %s\n", argv[1]);
+                printf("argv[2] = %s\n", argv[2]);
+                printf("argv[3] = %s\n", argv[3]);
+                if(argc - optind !=3 && argc-optind!=0 ){
+                    printf("Error: Expecting exactly 0 args or 3 args for mh_csv_cert_key_gen\n");
+                    break;
+                }
+                std::string oca_cert_file = "";
+                std::string pek_cert_file = "";
+                std::string pdh_cert_file = "";
+                if(argc - optind == 3) {
+                    printf("flag = true, use input 3 privkey files\n");
+                    flag = true; // generate the all new oca / pek/ pdh key
+                    oca_cert_file = argv[optind++];
+                    printf("oca_cert_file = %s\n",oca_cert_file.c_str());
+                    pek_cert_file = argv[optind++];
+                    printf("pek_cert_file = %s\n",pek_cert_file.c_str());
+                    pdh_cert_file = argv[optind++];
+                    printf("pdh_cert_file = %s\n",pdh_cert_file.c_str());
+                }
+
+                Command cmd(output_folder, verbose_flag, CCP_NOT_REQ);
+                cmd_ret = cmd.mh_export_csv_cert_key(flag,oca_cert_file,pek_cert_file,pdh_cert_file);
                 break;
             }
             case 'T': {         // Run Tests
